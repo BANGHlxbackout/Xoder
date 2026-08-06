@@ -1,0 +1,309 @@
+from pathlib import Path
+
+import pytest
+
+from xoder_coding import (
+    Skill,
+    XoderResourcePaths,
+    build_skill_index,
+    expand_skill_command,
+    format_skill_invocation,
+    load_skills,
+    load_skills_with_diagnostics,
+    parse_skill_invocation,
+)
+from xoder_coding.resources import ResourceError
+from xoder_coding.self_docs import xoder_builtin_skills_path
+
+
+def test_load_skills_includes_bundled_first_party_skills(tmp_path: Path) -> None:
+    skills = load_skills(XoderResourcePaths(root=tmp_path, agents_root=None))
+
+    assert [skill.name for skill in skills] == ["create-xoder-extension", "xoder-model-catalog"]
+    assert all("xoder_coding/data/skills" in skill.path.as_posix() for skill in skills)
+
+
+def test_bundled_skill_directories_use_xoder_names_only() -> None:
+    skills_dir = xoder_builtin_skills_path()
+
+    assert (skills_dir / "create-xoder-extension" / "SKILL.md").is_file()
+    assert (skills_dir / "xoder-model-catalog" / "SKILL.md").is_file()
+    assert not (skills_dir / "create-tau-extension").exists()
+    assert not (skills_dir / "tau-model-catalog").exists()
+
+
+def test_load_skills_from_directory(tmp_path: Path) -> None:
+    """Skills must live in ``<dir>/<name>/SKILL.md`` subdirectories."""
+    skills_dir = tmp_path / "skills"
+    (skills_dir / "python-testing").mkdir(parents=True)
+    (skills_dir / "python-testing" / "SKILL.md").write_text(
+        "---\ndescription: Test Python code\n---\n# Python Testing\nUse pytest.",
+        encoding="utf-8",
+    )
+    (skills_dir / "git-review").mkdir()
+    (skills_dir / "git-review" / "SKILL.md").write_text(
+        "# Git Review\nReview diffs.", encoding="utf-8"
+    )
+
+    skills = load_skills(XoderResourcePaths(root=tmp_path, agents_root=None))
+
+    skill_by_name = {skill.name: skill for skill in skills}
+    assert set(skill_by_name) == {
+        "create-xoder-extension",
+        "git-review",
+        "python-testing",
+        "xoder-model-catalog",
+    }
+    assert skill_by_name["git-review"].description == "Git Review"
+    assert skill_by_name["python-testing"].description == "Test Python code"
+
+
+def test_load_skills_includes_user_and_project_agents_directories(tmp_path: Path) -> None:
+    """Skills in .agents/skills/ must be subdirectories containing SKILL.md."""
+    xoder_home = tmp_path / "home" / ".xoder"
+    agents_home = tmp_path / "home" / ".agents"
+    cwd = tmp_path / "project"
+    (agents_home / "skills" / "user-skill").mkdir(parents=True)
+    (agents_home / "skills" / "user-skill" / "SKILL.md").write_text(
+        "# User Skill\nFrom user agents.", encoding="utf-8"
+    )
+    (cwd / ".agents" / "skills" / "project-skill").mkdir(parents=True)
+    (cwd / ".agents" / "skills" / "project-skill" / "SKILL.md").write_text(
+        "# Project Skill\nFrom project agents.", encoding="utf-8"
+    )
+
+    skills = load_skills(XoderResourcePaths(root=xoder_home, agents_root=agents_home, cwd=cwd))
+
+    assert {skill.name for skill in skills} == {
+        "create-xoder-extension",
+        "project-skill",
+        "xoder-model-catalog",
+        "user-skill",
+    }
+
+
+def test_user_skill_overrides_bundled_skill(tmp_path: Path) -> None:
+    skill_dir = tmp_path / "skills" / "xoder-model-catalog"
+    skill_dir.mkdir(parents=True)
+    skill_path = skill_dir / "SKILL.md"
+    skill_path.write_text("# Custom catalog workflow", encoding="utf-8")
+
+    skills, diagnostics = load_skills_with_diagnostics(
+        XoderResourcePaths(root=tmp_path, agents_root=None)
+    )
+
+    catalog_skill = next(skill for skill in skills if skill.name == "xoder-model-catalog")
+    assert catalog_skill.path == skill_path
+    assert any(
+        diagnostic.name == "xoder-model-catalog"
+        and "overrides lower-precedence resource" in diagnostic.message
+        for diagnostic in diagnostics
+    )
+
+
+def test_project_agents_skill_overrides_user_agents_skill(tmp_path: Path) -> None:
+    """Project .agents/skills/ skills take precedence over user-level ones."""
+    xoder_home = tmp_path / "home" / ".xoder"
+    agents_home = tmp_path / "home" / ".agents"
+    cwd = tmp_path / "project"
+    (agents_home / "skills" / "review").mkdir(parents=True)
+    (agents_home / "skills" / "review" / "SKILL.md").write_text("# User Review", encoding="utf-8")
+    (cwd / ".agents" / "skills" / "review").mkdir(parents=True)
+    (cwd / ".agents" / "skills" / "review" / "SKILL.md").write_text(
+        "# Project Review", encoding="utf-8"
+    )
+
+    skills = load_skills(XoderResourcePaths(root=xoder_home, agents_root=agents_home, cwd=cwd))
+
+    review = next(skill for skill in skills if skill.name == "review")
+    assert review.path == cwd / ".agents" / "skills" / "review" / "SKILL.md"
+    assert review.description == "Project Review"
+
+
+def test_load_skills_with_diagnostics_reports_overrides(tmp_path: Path) -> None:
+    xoder_home = tmp_path / "home" / ".xoder"
+    agents_home = tmp_path / "home" / ".agents"
+    cwd = tmp_path / "project"
+    (xoder_home / "skills" / "review").mkdir(parents=True)
+    (xoder_home / "skills" / "review" / "SKILL.md").write_text(
+        "# User Xoder Review", encoding="utf-8"
+    )
+    (cwd / ".xoder" / "skills" / "review").mkdir(parents=True)
+    (cwd / ".xoder" / "skills" / "review" / "SKILL.md").write_text(
+        "# Project Xoder Review", encoding="utf-8"
+    )
+
+    skills, diagnostics = load_skills_with_diagnostics(
+        XoderResourcePaths(root=xoder_home, agents_root=agents_home, cwd=cwd)
+    )
+
+    review = next(skill for skill in skills if skill.name == "review")
+    assert review.path == cwd / ".xoder" / "skills" / "review" / "SKILL.md"
+    override_diagnostics = [
+        d for d in diagnostics if "overrides lower-precedence resource" in d.message
+    ]
+    assert len(override_diagnostics) == 1
+    assert override_diagnostics[0].kind == "skill"
+    assert override_diagnostics[0].name == "review"
+
+
+def test_load_skills_with_diagnostics_reports_bare_md_migration_hint(
+    tmp_path: Path,
+) -> None:
+    """Bare ``.md`` files at a skills-dir root produce an info diagnostic.
+
+    They are silently skipped from the loaded skill set, but users are told
+    how to migrate: rename ``foo.md`` to ``foo/SKILL.md``.
+    """
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    (skills_dir / "legacy.md").write_text("# Legacy Skill\nOld body.", encoding="utf-8")
+    (skills_dir / "good").mkdir()
+    (skills_dir / "good" / "SKILL.md").write_text("# Good Skill", encoding="utf-8")
+
+    skills, diagnostics = load_skills_with_diagnostics(
+        XoderResourcePaths(root=tmp_path, agents_root=None)
+    )
+
+    assert "good" in {skill.name for skill in skills}
+    migration_diagnostics = [d for d in diagnostics if d.severity == "info"]
+    assert len(migration_diagnostics) == 1
+    assert migration_diagnostics[0].name == "legacy"
+    assert migration_diagnostics[0].path == skills_dir / "legacy.md"
+    assert "bare .md files are no longer treated as skills" in migration_diagnostics[0].message
+    assert str(skills_dir / "legacy" / "SKILL.md") in migration_diagnostics[0].message
+
+
+def test_agents_root_is_not_a_skills_directory(tmp_path: Path) -> None:
+    """The .agents root directory itself must not be scanned for skills.
+
+    Files like ``README.md`` or ``AGENTS.md`` in the root should be ignored.
+    Only ``.agents/skills/`` is a valid skill location.
+    """
+    agents_home = tmp_path / ".agents"
+    agents_home.mkdir()
+    (agents_home / "AGENTS.md").write_text("# Instructions", encoding="utf-8")
+    (agents_home / "README.md").write_text("# Readme", encoding="utf-8")
+    (agents_home / "review.md").write_text("# Review", encoding="utf-8")
+
+    skills = load_skills(XoderResourcePaths(root=tmp_path / ".xoder", agents_root=agents_home))
+
+    assert {skill.name for skill in skills} == {"create-xoder-extension", "xoder-model-catalog"}
+
+
+def test_agents_skills_dir_ignores_bare_md_files(tmp_path: Path) -> None:
+    """Bare .md files in .agents/skills/ are not treated as skills.
+
+    Only subdirectories containing ``SKILL.md`` are valid. Files like
+    ``reference.md`` alongside a skill directory should be ignored.
+    """
+    agents_home = tmp_path / ".agents"
+    skills_dir = agents_home / "skills"
+    (skills_dir / "my-skill").mkdir(parents=True)
+    (skills_dir / "my-skill" / "SKILL.md").write_text("# Valid Skill", encoding="utf-8")
+    (skills_dir / "reference.md").write_text("# Reference doc", encoding="utf-8")
+
+    paths = XoderResourcePaths(root=tmp_path / ".xoder", agents_root=agents_home)
+    skills = load_skills(paths)
+
+    assert "my-skill" in {skill.name for skill in skills}
+
+
+def test_xoder_skills_dir_ignores_bare_md_files(tmp_path: Path) -> None:
+    """Bare .md files in .xoder/skills/ are also ignored (unified with .agents/).
+
+    Xoder diverges from Pi here: Pi keeps a permissive ``.pi/skills`` for
+    backward compatibility, but Xoder applies the Agent Skills spec uniformly.
+    """
+    skills_dir = tmp_path / "skills"
+    (skills_dir / "my-skill").mkdir(parents=True)
+    (skills_dir / "my-skill" / "SKILL.md").write_text("# Subdir Skill", encoding="utf-8")
+    (skills_dir / "reference.md").write_text("# Reference doc", encoding="utf-8")
+
+    paths = XoderResourcePaths(root=tmp_path, agents_root=None)
+    skills = load_skills(paths)
+
+    assert "my-skill" in {skill.name for skill in skills}
+
+
+def test_expand_skill_command_includes_skill_and_user_request(tmp_path: Path) -> None:
+    skills_dir = tmp_path / "skills" / "testing"
+    skills_dir.mkdir(parents=True)
+    (skills_dir / "SKILL.md").write_text("# Testing\nRun pytest.", encoding="utf-8")
+    skills = load_skills(XoderResourcePaths(root=tmp_path, agents_root=None))
+
+    expanded = expand_skill_command("/skill:testing add parser tests", skills)
+
+    assert expanded is not None
+    testing = next(skill for skill in skills if skill.name == "testing")
+    assert f'<skill name="testing" location="{testing.path}">' in expanded
+    assert f"References are relative to {testing.path.parent}." in expanded
+    assert "Run pytest." in expanded
+    assert expanded.endswith("</skill>\n\nadd parser tests")
+
+
+def test_format_skill_invocation_without_extra_instructions(tmp_path: Path) -> None:
+    skill = Skill(
+        name="testing",
+        path=tmp_path / "skills" / "testing" / "SKILL.md",
+        content="# Testing\nRun pytest.",
+        description="Test code",
+    )
+
+    formatted = format_skill_invocation(skill)
+
+    assert formatted == (
+        f'<skill name="testing" location="{skill.path}">\n'
+        f"References are relative to {skill.path.parent}.\n\n"
+        "# Testing\n"
+        "Run pytest.\n"
+        "</skill>"
+    )
+
+
+def test_parse_skill_invocation_extracts_display_metadata(tmp_path: Path) -> None:
+    skill = Skill(
+        name="testing",
+        path=tmp_path / "skills" / "testing" / "SKILL.md",
+        content="# Testing\nRun pytest.",
+        description="Test Python code",
+    )
+    formatted = format_skill_invocation(skill, "add parser tests")
+
+    parsed = parse_skill_invocation(formatted)
+
+    assert parsed is not None
+    assert parsed.name == "testing"
+    assert parsed.location == str(skill.path)
+    assert "# Testing" in parsed.content
+    assert parsed.additional_instructions == "add parser tests"
+
+
+def test_expand_skill_command_returns_none_for_normal_prompt(tmp_path: Path) -> None:
+    assert (
+        expand_skill_command(
+            "hello", load_skills(XoderResourcePaths(root=tmp_path, agents_root=None))
+        )
+        is None
+    )
+
+
+def test_expand_skill_command_rejects_unknown_skill() -> None:
+    with pytest.raises(ResourceError, match="Unknown skill"):
+        expand_skill_command("/skill:missing", [])
+
+
+def test_build_skill_index(tmp_path: Path) -> None:
+    skills_dir = tmp_path / "skills" / "testing"
+    skills_dir.mkdir(parents=True)
+    (skills_dir / "SKILL.md").write_text(
+        "---\ndescription: Test things\n---\nBody",
+        encoding="utf-8",
+    )
+
+    index = build_skill_index(load_skills(XoderResourcePaths(root=tmp_path, agents_root=None)))
+
+    assert "Available skills:" in index
+    assert "- create-xoder-extension:" in index
+    assert "- xoder-model-catalog:" in index
+    assert "- testing: Test things" in index

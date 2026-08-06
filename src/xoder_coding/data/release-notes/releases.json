@@ -1,0 +1,11 @@
+[
+  {
+    "version": "0.2.2",
+    "date": null,
+    "sections": {
+      "Changed": [
+        "Prepare the current codebase, command, packages, runtime resources, and public project content for Xoder source distribution."
+      ]
+    }
+  }
+]
