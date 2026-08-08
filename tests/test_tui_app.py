@@ -2072,7 +2072,10 @@ async def test_mouse_wheel_over_prompt_scrolls_started_conversation() -> None:
             scroll_end=True,
         )
         app._refresh()
-        await pilot.pause()
+        for _ in range(5):
+            await pilot.pause()
+            if transcript.scroll_y == transcript.max_scroll_y > 0:
+                break
         assert transcript.scroll_y == transcript.max_scroll_y > 0
 
         await pilot._post_mouse_events(
