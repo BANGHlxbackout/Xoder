@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "xoder-ai"
-version = "0.2.2"
-description = "Xoder, a readable Pi-style terminal coding agent and reusable Python harness."
+version = "0.0.0"
+description = "A customizable Python agent harness with a complete terminal coding agent."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -47,6 +47,7 @@ include = [
     "/CONTRIBUTING.md",
     "/LICENSE",
     "/README.md",
+    "/README.zh-CN.md",
     "/examples",
     "/pyproject.toml",
     "/src/xoder_ai",

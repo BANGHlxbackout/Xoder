@@ -143,7 +143,7 @@ def test_parse_theme_rejects_rich_only_colors_in_role_bodies(body: str) -> None:
 
 
 def test_parse_theme_rejects_rich_only_colors_in_role_borders() -> None:
-    # Role borders feed Textual's styles.border_left as well as Rich tables.
+    # Role borders are semantic accent colors shared by Textual and Rich.
     data = _theme_data()
     data["roles"]["user"] = {"border": "bright_red", "body": "#e0e0e0"}
 

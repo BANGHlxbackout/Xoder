@@ -2391,7 +2391,7 @@ class XoderTuiApp(App[None]):
         min-width: 36;
         height: 1fr;
         padding: 1 1 1 2;
-        background: $xoder-prompt-background;
+        background: $xoder-sidebar-background;
         border: none;
     }
 
@@ -2471,6 +2471,9 @@ class XoderTuiApp(App[None]):
     #prompt-row {
         height: auto;
         margin: 0 1 1 1;
+        border-top: solid $xoder-prompt-border;
+        border-bottom: solid $xoder-prompt-border;
+        background: $xoder-screen-background;
     }
 
     #prompt-prefix {
@@ -2486,21 +2489,12 @@ class XoderTuiApp(App[None]):
     #prompt {
         width: 1fr;
         height: auto;
-        background: $xoder-prompt-background;
+        background: $xoder-screen-background;
         color: $xoder-prompt-text;
         border: none;
-        border-left: tall transparent;
         margin: 0;
         padding: 1 1;
         max-height: 8;
-    }
-
-    #prompt:focus {
-        border-left: tall $xoder-prompt-border;
-    }
-
-    #prompt.-shell-mode {
-        border-left: tall $xoder-accent;
     }
 
     #compact-session-info {
@@ -2806,6 +2800,16 @@ class XoderTuiApp(App[None]):
         margin-bottom: 1;
     }
 
+    #custom-provider-name,
+    #custom-provider-display-name,
+    #custom-provider-base-url,
+    #custom-provider-api-key-env,
+    #custom-provider-models,
+    #custom-provider-default-model,
+    #custom-provider-api-key {
+        border: tall $xoder-custom-provider-border;
+    }
+
     #login-oauth-url {
         min-height: 1;
         max-height: 4;
@@ -2846,6 +2850,8 @@ class XoderTuiApp(App[None]):
         self._applying_settings_theme = False
         self._bindings = BindingsMap(_app_bindings(self.tui_settings.keybindings))
         self.session = session
+        self._welcome_visible = not bool(session.messages)
+        self._welcome_scroll_reset_pending = self._welcome_visible
         self.state = TuiState(skills=session.skills)
         for notice in self.startup_notices:
             self.state.add_item("status", notice)
@@ -3873,6 +3879,26 @@ class XoderTuiApp(App[None]):
         with suppress(NoMatches):
             self.query_one("#transcript", TranscriptView).follow_output()
 
+    def on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
+        """Scroll the transcript when the pointer is over non-scrollable main chrome."""
+        if len(self.screen_stack) != 1:
+            return
+        with suppress(NoMatches):
+            transcript = self.query_one("#transcript", TranscriptView)
+            if transcript.display and transcript.scroll_from_wheel("up", self.scroll_sensitivity_y):
+                event.stop()
+
+    def on_mouse_scroll_down(self, event: events.MouseScrollDown) -> None:
+        """Scroll the transcript when the pointer is over non-scrollable main chrome."""
+        if len(self.screen_stack) != 1:
+            return
+        with suppress(NoMatches):
+            transcript = self.query_one("#transcript", TranscriptView)
+            if transcript.display and transcript.scroll_from_wheel(
+                "down", self.scroll_sensitivity_y
+            ):
+                event.stop()
+
     async def _run_terminal_command(self, command: str, *, add_to_context: bool) -> None:
         run_terminal_command = getattr(self.session, "run_terminal_command", None)
         if not callable(run_terminal_command):
@@ -4379,6 +4405,8 @@ class XoderTuiApp(App[None]):
     async def _resume_session(self, session_id: str) -> None:
         try:
             resume_message = await self.session.resume(session_id)
+            self._welcome_visible = False
+            self._welcome_scroll_reset_pending = False
             self.state.clear()
             self.state.set_skills(self.session.skills)
             self._load_session_messages_from_session()
@@ -4471,6 +4499,8 @@ class XoderTuiApp(App[None]):
             return
         try:
             await new_session()
+            self._welcome_visible = True
+            self._welcome_scroll_reset_pending = True
             self.state.clear()
             self.state.set_skills(self.session.skills)
             self._load_session_messages_from_session()
@@ -4922,6 +4952,14 @@ class XoderTuiApp(App[None]):
         self._sync_session_title()
         self._sync_text_selection_state()
         self._sync_queue_state()
+        transcript = self.query_one("#transcript", TranscriptView)
+        transcript.update_welcome(
+            self.session,
+            theme=theme,
+            visible=self._welcome_visible,
+            reset_scroll=self._welcome_scroll_reset_pending,
+        )
+        self._welcome_scroll_reset_pending = False
         sidebar = self.query_one("#sidebar", SessionSidebar)
         sidebar.update_from_session(self.session, theme=theme)
         compact_info = self.query_one("#compact-session-info", CompactSessionInfo)
@@ -5005,32 +5043,19 @@ class XoderTuiApp(App[None]):
     def _apply_activity_indicator(self) -> None:
         theme = self.tui_settings.resolved_theme
         try:
-            prompt = self.query_one("#prompt", PromptInput)
             prompt_prefix = self.query_one("#prompt-prefix", Static)
         except NoMatches:
             return
-        shell_mode = _is_terminal_command_prompt(prompt.text)
         render_key = (
             theme.name,
             theme.accent,
             theme.screen_background,
-            theme.prompt_border,
             self._activity_frame,
             self.state.running,
-            shell_mode,
         )
         if render_key == self._last_activity_indicator_key:
             return
         self._last_activity_indicator_key = render_key
-        prompt.styles.border_left = (
-            "tall",
-            _activity_prompt_border_color(
-                theme,
-                frame=self._activity_frame,
-                running=self.state.running,
-                shell_mode=shell_mode,
-            ),
-        )
         prompt_prefix.update(
             _render_activity_indicator(
                 theme,
@@ -5148,20 +5173,6 @@ class XoderTuiApp(App[None]):
         prompt.set_class(_is_terminal_command_prompt(text), "-shell-mode")
         prompt.refresh()
         self._apply_activity_indicator()
-
-
-def _activity_prompt_border_color(
-    theme: TuiTheme,
-    *,
-    frame: int,
-    running: bool,
-    shell_mode: bool,
-) -> str:
-    """Return the prompt border color for the current activity animation frame."""
-    del frame, running
-    if shell_mode:
-        return theme.accent
-    return theme.prompt_border
 
 
 def _render_activity_indicator(theme: TuiTheme, *, frame: int, running: bool) -> Text:
@@ -5625,6 +5636,7 @@ def _theme_css_variables(theme: TuiTheme) -> dict[str, str]:
         "xoder-prompt-background": theme.prompt_background,
         "xoder-prompt-text": theme.prompt_text,
         "xoder-prompt-border": theme.prompt_border,
+        "xoder-custom-provider-border": theme.role_styles["custom"].border,
         "xoder-autocomplete-background": theme.autocomplete_background,
         "xoder-accent": theme.accent,
         "xoder-highlight-background": theme.highlight_background,

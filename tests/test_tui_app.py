@@ -6,8 +6,9 @@ from io import StringIO
 from pathlib import Path
 
 import pytest
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
+from rich.text import Text
 from textual import events
 from textual.color import Color
 from textual.containers import Container, VerticalScroll
@@ -86,7 +87,6 @@ from xoder_coding.tui.app import (
     ThemePickerScreen,
     TreePickerScreen,
     XoderTuiApp,
-    _activity_prompt_border_color,
     _completion_selected_render_line,
     _terminal_command_prefix_span,
     _textual_theme_for_xoder_theme,
@@ -115,6 +115,7 @@ from xoder_coding.tui.widgets import (
     TranscriptMessageWidget,
     TranscriptView,
     TranscriptWindowBoundary,
+    WelcomePanel,
     XoderMarkdownBlock,
     _compact_token_count,
     _sidebar_brand,
@@ -125,6 +126,7 @@ from xoder_coding.tui.widgets import (
     render_chat_item,
     render_compact_session_info,
     render_session_sidebar,
+    render_welcome_panel,
     transcript_item_selection_text,
 )
 
@@ -503,7 +505,7 @@ def test_session_sidebar_brand_includes_current_version() -> None:
 
     console.print(_sidebar_brand(theme=XODER_DARK_THEME))
 
-    assert "Xoder  0.2.2" in console.export_text()
+    assert "Xoder  0.0.0" in console.export_text()
 
 
 def test_tui_app_uses_xoder_title_and_prompt_placeholder() -> None:
@@ -511,6 +513,191 @@ def test_tui_app_uses_xoder_title_and_prompt_placeholder() -> None:
 
     assert app.TITLE == "Xoder"
     assert PROMPT_PLACEHOLDER.startswith("Ask Xoder…")
+
+
+def test_welcome_panel_renders_new_session_metadata_and_hints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = FakeSession()
+
+    console = Console(record=True, width=100)
+    console.print(render_welcome_panel(session))
+    output = console.export_text()
+
+    assert "Xoder v0.0.0" in output
+    assert "/workspace/project" in output
+    assert "openai · fake-model" in output
+    assert "read · write · edit · bash" in output
+    assert "@ files     add project context" in output
+    assert "/ commands  open Xoder commands" in output
+    assert "! shell     run a local command" in output
+    assert "Start with a coding task." not in output
+
+    welcome = render_welcome_panel(session)
+    assert isinstance(welcome, Group)
+    card = welcome.renderables[0]
+    assert isinstance(card, Panel)
+    assert str(card.border_style) == XODER_DARK_THEME.prompt_border
+    card_body = card.renderable
+    assert isinstance(card_body, Group)
+    title = card_body.renderables[0]
+    assert isinstance(title, Text)
+    assert title.spans[0].start == 0
+    assert title.spans[0].end == len(">_  ")
+    assert str(title.spans[0].style) == f"bold {XODER_DARK_THEME.accent}"
+    assert str(title.spans[1].style) == f"bold {XODER_DARK_THEME.prompt_text}"
+
+    styled_console = Console(
+        record=True,
+        width=100,
+        color_system="truecolor",
+        force_terminal=True,
+        no_color=False,
+    )
+    styled_console.print(welcome)
+    styled_output = styled_console.export_text(styles=True)
+    link_color = _style_color_escape(XODER_DARK_THEME.markdown_link)
+    muted_color = _style_color_escape(XODER_DARK_THEME.muted_text)
+    assert f"{link_color}m@ files" in styled_output
+    assert f"{link_color}m/ commands" in styled_output
+    assert f"{link_color}m! shell" in styled_output
+    assert f"{muted_color}madd project context" in styled_output
+
+    monkeypatch.setattr("xoder_coding.tui.widgets.current_version", lambda: "9.8.7")
+    changed_console = Console(record=True, width=100)
+    changed_console.print(render_welcome_panel(session))
+
+    assert "Xoder v9.8.7" in changed_console.export_text()
+
+
+@pytest.mark.anyio
+async def test_welcome_panel_text_is_selectable() -> None:
+    app = XoderTuiApp(FakeSession())
+
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.pause()
+        welcome = app.query_one("#welcome-panel", WelcomePanel)
+
+        selected = welcome.get_selection(SELECT_ALL)
+
+        assert selected is not None
+        selected_text, ending = selected
+        assert "Xoder v0.0.0" in selected_text
+        assert "/workspace/project" in selected_text
+        assert "@ files" in selected_text
+        assert ending == "\n"
+
+        app.screen.selections = {welcome: SELECT_ALL}
+        copied_text = app.screen.get_selected_text()
+        assert copied_text is not None
+        assert "Xoder v0.0.0" in copied_text
+        assert "/workspace/project" in copied_text
+        assert "@ files" in copied_text
+
+
+@pytest.mark.anyio
+async def test_welcome_panel_updates_after_real_model_selection() -> None:
+    session = FakeSession()
+    app = XoderTuiApp(session)
+
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.pause()
+        transcript = app.query_one("#transcript", TranscriptView)
+        welcome = app.query_one("#welcome-panel", WelcomePanel)
+        initial_scroll_y = transcript.scroll_y
+
+        before_console = Console(record=True, width=100)
+        before_console.print(welcome.content)
+        assert "openai · fake-model" in before_console.export_text()
+
+        prompt = app.query_one("#prompt")
+        prompt.value = "/model"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, ModelPickerScreen)
+
+        await pilot.press("down", "down", "enter")
+        await pilot.pause()
+
+        after_console = Console(record=True, width=100)
+        after_console.print(welcome.content)
+        after = after_console.export_text()
+        compact_console = Console(record=True, width=100)
+        compact_console.print(app.query_one("#compact-session-info", Static).content)
+        compact = compact_console.export_text()
+
+        assert session.provider_name == "local"
+        assert session.model == "local-model"
+        assert "local · local-model" in after
+        assert "openai · fake-model" not in after
+        assert "local:local-model" in compact
+        assert welcome.display
+        assert transcript.scroll_y == initial_scroll_y
+
+
+@pytest.mark.anyio
+async def test_welcome_panel_follows_session_lifecycle() -> None:
+    session = FakeSession(
+        events=(
+            AgentStartEvent(),
+            MessageEndEvent(message=UserMessage(content="first task")),
+            AgentEndEvent(),
+        )
+    )
+    session.model = "model-with-a-long-name-that-wraps-at-eighty-columns"
+    app = XoderTuiApp(session)
+
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        transcript = app.query_one("#transcript", TranscriptView)
+        welcome = app.query_one("#welcome-panel", WelcomePanel)
+
+        assert welcome.display
+        assert transcript.children[0] is welcome
+        assert transcript.lines == ()
+        assert transcript.scroll_y == 0
+
+        prompt = app.query_one("#prompt")
+        prompt.value = "first task"
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.pause()
+
+        assert welcome.display
+        assert transcript.children[0] is welcome
+        assert any(item.role == "user" and item.text == "first task" for item in app.state.items)
+
+        prompt.value = "/resume session-1"
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert not welcome.display
+
+        prompt.value = "/new"
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.pause()
+
+        assert welcome.display
+        assert transcript.children[0] is welcome
+        assert transcript.scroll_y == 0
+        assert app.state.items == []
+        assert session.messages == ()
+
+
+@pytest.mark.anyio
+async def test_welcome_panel_is_hidden_for_initial_restored_session() -> None:
+    session = FakeSession(messages=(UserMessage(content="restored"),))
+    app = XoderTuiApp(session)
+
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        transcript = app.query_one("#transcript", TranscriptView)
+        welcome = app.query_one("#welcome-panel", WelcomePanel)
+
+        assert not welcome.display
+        assert [line.text for line in transcript.lines] == ["restored"]
+        assert [message.text for message in session.messages] == ["restored"]
 
 
 def test_session_sidebar_uses_prominent_title_and_accented_section_headers() -> None:
@@ -703,16 +890,18 @@ def test_chat_items_render_as_unlabeled_blocks() -> None:
     assert "you:" not in output
     assert "assistant:" not in output
     assert "tool:" not in output
-    assert "▌ Read the file" in output
+    assert "› Read the file" in output
+    assert "▌" not in output
 
 
-def test_chat_items_use_left_accent_instead_of_box_border() -> None:
+def test_chat_items_render_without_left_accent_or_box_border() -> None:
     console = Console(record=True, width=40)
 
     console.print(render_chat_item(ChatItem(role="assistant", text="Done.")))
     output = console.export_text()
 
-    assert "▌ Done." in output
+    assert "Done." in output
+    assert "▌" not in output
     assert "┌" not in output
     assert "└" not in output
 
@@ -736,19 +925,19 @@ def test_chat_items_fold_long_unbroken_text_to_console_width() -> None:
     assert max(len(line) for line in output.splitlines()) <= 36
 
 
-def test_chat_items_use_configured_theme_accent() -> None:
+def test_chat_items_use_configured_user_role_accent() -> None:
     console = Console(record=True, width=40)
 
     console.print(
         render_chat_item(
-            ChatItem(role="assistant", text="Done."),
+            ChatItem(role="user", text="Done."),
             theme=HIGH_CONTRAST_THEME,
         )
     )
     output = console.export_text(styles=True)
 
     assert "Done." in output
-    assert "38;2;0;255;102" in output
+    assert _style_color_escape(HIGH_CONTRAST_THEME.role_styles["user"].border) in output
 
 
 def test_chat_items_render_fenced_code_without_markers() -> None:
@@ -775,8 +964,8 @@ def test_assistant_chat_items_apply_syntax_highlighting_to_code_fences() -> None
 
     assert "def" in output
     assert "return" in output
-    assert "\x1b[94;48;2;22;27;33mdef" in output
-    assert "\x1b[94;48;2;22;27;33mreturn" in output
+    assert "\x1b[94;48;2;28;32;38mdef" in output
+    assert "\x1b[94;48;2;28;32;38mreturn" in output
 
 
 def test_chat_items_fallback_unknown_fenced_language_to_plain_code() -> None:
@@ -881,7 +1070,7 @@ def test_thinking_chat_items_use_distinct_style_and_markdown() -> None:
     assert "Plan" in output
     assert "**Plan**" not in plain
     assert "Hidden reasoning" in output
-    assert "38;2;156;163;175" in output
+    assert _style_color_escape(XODER_DARK_THEME.role_styles["thinking"].body) in output
 
 
 def test_skill_chat_items_use_distinct_compact_style() -> None:
@@ -891,7 +1080,7 @@ def test_skill_chat_items_use_distinct_compact_style() -> None:
 
     output = console.export_text(styles=True)
     assert "Using skill: review" in output
-    assert "38;2;229;212;239" in output
+    assert _style_color_escape(XODER_DARK_THEME.role_styles["skill"].body) in output
 
 
 def test_skill_chat_items_expand_with_tool_results_toggle() -> None:
@@ -1073,8 +1262,9 @@ def test_light_theme_tool_success_uses_dark_text_without_background() -> None:
 
     output = console.export_text(styles=True)
 
-    assert "38;2;22;101;52" in output
-    assert "38;2;22;101;52;48;2" not in output
+    success = _style_color_escape(XODER_LIGHT_THEME.tool_success_text)
+    assert success in output
+    assert f"{success};48;2" not in output
 
 
 def test_light_theme_tool_error_uses_red_text_without_background() -> None:
@@ -1089,18 +1279,20 @@ def test_light_theme_tool_error_uses_red_text_without_background() -> None:
 
     output = console.export_text(styles=True)
 
-    assert "38;2;185;28;28" in output
-    assert "38;2;185;28;28;48;2" not in output
+    error = _style_color_escape(XODER_LIGHT_THEME.tool_error_text)
+    assert error in output
+    assert f"{error};48;2" not in output
 
 
-def test_dark_theme_markdown_code_uses_aqua_highlight() -> None:
+def test_dark_theme_markdown_code_uses_theme_highlight_without_background() -> None:
     console = Console(record=True, width=80)
     console.print(render_chat_item(ChatItem(role="assistant", text="Use `xoder` here.")))
 
     output = console.export_text(styles=True)
 
-    assert "38;2;117;158;149" in output
-    assert "38;2;219;148;90" not in output
+    inline_code = _style_color_escape(XODER_DARK_THEME.markdown_inline_code)
+    assert inline_code in output
+    assert f"{inline_code};48;2" not in output
 
 
 def test_assistant_markdown_titles_use_highlight_color_and_left_alignment() -> None:
@@ -1124,7 +1316,7 @@ def test_dark_theme_markdown_links_use_theme_link_color() -> None:
 
     output = console.export_text(styles=True)
 
-    assert "38;2;147;197;253" in output
+    assert _style_color_escape(XODER_DARK_THEME.markdown_link) in output
 
 
 def test_dark_theme_markdown_bullets_use_theme_bullet_color() -> None:
@@ -1189,7 +1381,7 @@ def test_textual_markdown_uses_theme_highlight_and_aqua_inline_code() -> None:
     assert variables["xoder-markdown-bullet"] == XODER_LIGHT_THEME.markdown_bullet
 
 
-def test_light_theme_markdown_code_uses_aqua_without_background() -> None:
+def test_light_theme_markdown_code_uses_theme_highlight_without_background() -> None:
     console = Console(record=True, width=80)
     console.print(
         render_chat_item(
@@ -1200,8 +1392,9 @@ def test_light_theme_markdown_code_uses_aqua_without_background() -> None:
 
     output = console.export_text(styles=True)
 
-    assert "38;2;15;118;110" in output
-    assert "38;2;15;118;110;48;2" not in output
+    inline_code = _style_color_escape(XODER_LIGHT_THEME.markdown_inline_code)
+    assert inline_code in output
+    assert f"{inline_code};48;2" not in output
 
 
 def test_pending_tool_invocation_uses_tool_accent_color() -> None:
@@ -1218,9 +1411,9 @@ def test_pending_tool_invocation_uses_tool_accent_color() -> None:
 
     output = console.export_text(styles=True)
 
-    accent = "38;2;138;122;82;48;2;0;0;0m"
-    assert f"{accent}read" in output
-    assert f"{accent} README.md" in output
+    accent = _style_color_escape(XODER_DARK_THEME.role_styles["tool"].border)
+    assert f"{accent}mread" in output
+    assert f"{accent}m README.md" in output
 
 
 def test_tool_chat_items_color_status_metadata_not_tool_name_or_results() -> None:
@@ -1242,20 +1435,20 @@ def test_tool_chat_items_color_status_metadata_not_tool_name_or_results() -> Non
     )
     error_output = error_console.export_text(styles=True)
 
-    green = "38;2;156;255;177"
-    red = "38;2;255;79;79"
-    white = "38;2;203;213;225"
+    green = _style_color_escape(XODER_DARK_THEME.tool_success_text)
+    red = _style_color_escape(XODER_DARK_THEME.tool_error_text)
+    white = _style_color_escape(XODER_DARK_THEME.role_styles["tool"].body)
 
     assert green in success_output
-    assert f"{white};48;2;0;0;0mread" in success_output
-    assert f"{green};48;2;0;0;0mread" not in success_output
-    assert f"{green};48;2;0;0;0m✓ read" not in success_output
-    assert f"{green};48;2;0;0;0mcontents" not in success_output
+    assert f"{white}mread" in success_output
+    assert f"{green}mread" not in success_output
+    assert f"{green}m✓ read" not in success_output
+    assert f"{green}mcontents" not in success_output
 
     assert red in error_output
-    assert f"{white};48;2;0;0;0m✗ bash" in error_output
-    assert f"{red};48;2;0;0;0m✗ bash" not in error_output
-    assert f"{red};48;2;0;0;0mfailed" not in error_output
+    assert f"{white}m✗ bash" in error_output
+    assert f"{red}m✗ bash" not in error_output
+    assert f"{red}mfailed" not in error_output
 
 
 def test_assistant_chat_items_render_markdown_lists() -> None:
@@ -1324,14 +1517,20 @@ async def test_transcript_message_widget_extracts_plain_text_selection() -> None
         await pilot.pause()
         widget = app.query_one(TranscriptMessageWidget)
 
-        assert widget.get_selection(Selection(Offset(6, 0), Offset(10, 0))) == (
+        assert widget.get_selection(SELECT_ALL) == ("alpha beta\ngamma", "\n")
+        assert widget.get_selection(Selection(Offset(8, 0), Offset(12, 0))) == (
             "beta",
             "\n",
         )
+        assert widget.get_selection(Selection(Offset(8, 0), Offset(3, 1))) == (
+            "beta\ngam",
+            "\n",
+        )
+        assert widget.get_selection(Selection(Offset(0, 0), Offset(2, 0))) is None
 
 
 @pytest.mark.anyio
-async def test_transcript_message_widget_renders_full_height_role_block() -> None:
+async def test_transcript_message_widget_renders_without_left_role_border() -> None:
     plain_text = "alpha beta gamma\nsecond line\nthird line"
     app = XoderTuiApp(
         FakeSession(messages=[UserMessage(content=plain_text)]),
@@ -1342,29 +1541,55 @@ async def test_transcript_message_widget_renders_full_height_role_block() -> Non
     _, expected_background = _split_rich_style_colors(role_style.body)
     assert expected_background == HIGH_CONTRAST_THEME.prompt_background
     background = Color.parse(expected_background)
-    border = Color.parse(role_style.border)
 
     async with app.run_test(size=(60, 30)) as pilot:
         await pilot.pause()
         widget = app.query_one(TranscriptMessageWidget)
         body = widget.query_one(".transcript-message-body")
 
-        # A multi-line message must occupy more than a single row so the accent
-        # and background have to span the full message height.
+        # A multi-line message still occupies its full height after removing the
+        # single-sided role border.
         assert widget.size.height > 1
 
-        # The container owns the role background and a real left border, so the
-        # block is rectangular and the accent spans every wrapped line.
+        # High contrast keeps its configured background, but no role uses a
+        # single-sided border.
         assert widget.styles.background == background
         assert body.styles.background == background
         assert widget.styles.padding.top == 1
         assert widget.styles.padding.bottom == 1
-        edge_type, edge_color = widget.styles.border_left
-        assert edge_type != "none"
-        assert edge_color == border
+        assert not widget.styles.has_rule("border_left")
+
+        console = Console(record=True, width=60)
+        console.print(body.content)
+        assert "› alpha beta gamma" in console.export_text()
 
         # Selecting the whole message still yields the original plain text.
         assert widget.get_selection(SELECT_ALL) == (plain_text, "\n")
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        "user",
+        "assistant",
+        "thinking",
+        "tool",
+        "status",
+        "skill",
+        "error",
+        "custom",
+        "branch_summary",
+        "compaction_summary",
+    ],
+)
+def test_transcript_message_roles_do_not_use_left_borders(role: str) -> None:
+    widget = TranscriptMessageWidget(
+        ChatItem(role=role, text="message"),
+        theme=XODER_DARK_THEME,
+        show_tool_results=False,
+    )
+
+    assert not widget.styles.has_rule("border_left")
 
 
 @pytest.mark.anyio
@@ -1480,7 +1705,7 @@ async def test_tool_completion_updates_row_without_redrawing_history() -> None:
         pending_tool_widget = next(
             widget for widget in app.query(TranscriptMessageWidget) if widget.item.role == "tool"
         )
-        pending_border_color = pending_tool_widget.styles.border_left[1]
+        assert not pending_tool_widget.styles.has_rule("border_left")
         await stream(
             ToolExecutionEndEvent(
                 tool_call_id="call-1",
@@ -1496,7 +1721,7 @@ async def test_tool_completion_updates_row_without_redrawing_history() -> None:
             widget for widget in app.query(TranscriptMessageWidget) if widget.item.role == "tool"
         )
         assert tool_widget is pending_tool_widget
-        assert tool_widget.styles.border_left[1] != pending_border_color
+        assert not tool_widget.styles.has_rule("border_left")
         assert "✓ read" in tool_widget.selection_text
         assert "contents" in tool_widget.selection_text
 
@@ -1559,6 +1784,52 @@ async def test_long_transcript_mounts_bounded_latest_window_and_pages_earlier(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("scroll_target", ["#transcript", "#prompt-row", "#sidebar"])
+async def test_mouse_wheel_down_pages_later_messages_when_window_fits_viewport(
+    monkeypatch: pytest.MonkeyPatch,
+    scroll_target: str,
+) -> None:
+    from xoder_coding.tui import widgets as tui_widgets
+
+    monkeypatch.setattr(tui_widgets, "TRANSCRIPT_WINDOW_ITEMS", 6)
+    monkeypatch.setattr(tui_widgets, "TRANSCRIPT_WINDOW_PAGE_ITEMS", 2)
+    app = XoderTuiApp(
+        FakeSession(messages=[UserMessage(content=f"message {index}") for index in range(12)])
+    )
+
+    async with app.run_test(size=(60, 20)) as pilot:
+        await pilot.pause()
+        transcript = app.query_one("#transcript", TranscriptView)
+        transcript.scroll_to(y=0, animate=False, immediate=True)
+        for _ in range(5):
+            await pilot.pause()
+            if transcript._window_end == 10:
+                break
+
+        assert (transcript._window_start, transcript._window_end) == (4, 10)
+
+        await pilot.resize_terminal(120, 60)
+        for _ in range(3):
+            await pilot.pause()
+
+        assert transcript.scroll_y == transcript.max_scroll_y == 0
+        await pilot._post_mouse_events(
+            [events.MouseScrollDown],
+            widget=scroll_target,
+            offset=(2, 1),
+        )
+        for _ in range(5):
+            await pilot.pause()
+            if transcript._window_end == 12:
+                break
+
+        assert (transcript._window_start, transcript._window_end) == (6, 12)
+        assert [widget.item.text for widget in app.query(TranscriptMessageWidget)] == [
+            f"message {index}" for index in range(6, 12)
+        ]
+
+
+@pytest.mark.anyio
 async def test_long_transcript_incremental_appends_keep_mounted_window_bounded() -> None:
     initial_count = TRANSCRIPT_WINDOW_ITEMS + TRANSCRIPT_WINDOW_OVERSCAN_ITEMS
     app = XoderTuiApp(
@@ -1595,6 +1866,98 @@ async def test_transcript_resize_preserves_mounted_message_widgets() -> None:
         await pilot.pause()
 
         assert tuple(app.query(TranscriptMessageWidget)) == before
+
+
+@pytest.mark.anyio
+async def test_transcript_resize_clamps_followed_welcome_to_top() -> None:
+    app = XoderTuiApp(FakeSession())
+
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        transcript = app.query_one("#transcript", TranscriptView)
+        welcome = app.query_one("#welcome-panel", WelcomePanel)
+
+        app.state.add_item("user", "hello")
+        app._follow_transcript_output()
+        await transcript.append_item(
+            app.state.items[-1],
+            theme=app.tui_settings.resolved_theme,
+            scroll_end=True,
+        )
+        app._refresh()
+        await pilot.pause()
+
+        await pilot.resize_terminal(160, 50)
+        for _ in range(5):
+            await pilot.pause()
+
+        assert transcript.scroll_y == transcript.max_scroll_y == 0
+        assert not transcript.is_anchored
+        assert welcome.region.y == transcript.region.y
+
+
+@pytest.mark.anyio
+async def test_transcript_resize_does_not_page_earlier_while_normalizing_follow_position(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from xoder_coding.tui import widgets as tui_widgets
+
+    monkeypatch.setattr(tui_widgets, "TRANSCRIPT_WINDOW_ITEMS", 6)
+    monkeypatch.setattr(tui_widgets, "TRANSCRIPT_WINDOW_PAGE_ITEMS", 2)
+    app = XoderTuiApp(
+        FakeSession(messages=[UserMessage(content=f"message {index}") for index in range(12)])
+    )
+
+    async with app.run_test(size=(40, 12)) as pilot:
+        await pilot.pause()
+        transcript = app.query_one("#transcript", TranscriptView)
+        transcript.follow_output()
+        await pilot.pause()
+        assert (transcript._window_start, transcript._window_end) == (6, 12)
+        assert transcript.scroll_y > 0
+
+        await pilot.resize_terminal(120, 60)
+        for _ in range(5):
+            await pilot.pause()
+
+        assert transcript.scroll_y == transcript.max_scroll_y == 0
+        assert (transcript._window_start, transcript._window_end) == (6, 12)
+
+
+@pytest.mark.anyio
+async def test_mouse_wheel_only_normalizes_invalid_scroll_before_paging(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from xoder_coding.tui import widgets as tui_widgets
+
+    monkeypatch.setattr(tui_widgets, "TRANSCRIPT_WINDOW_ITEMS", 6)
+    monkeypatch.setattr(tui_widgets, "TRANSCRIPT_WINDOW_PAGE_ITEMS", 2)
+    app = XoderTuiApp(
+        FakeSession(messages=[UserMessage(content=f"message {index}") for index in range(12)])
+    )
+
+    async with app.run_test(size=(60, 20)) as pilot:
+        await pilot.pause()
+        transcript = app.query_one("#transcript", TranscriptView)
+        transcript.scroll_to(y=0, animate=False, immediate=True)
+        for _ in range(5):
+            await pilot.pause()
+            if transcript._window_end == 10:
+                break
+        assert (transcript._window_start, transcript._window_end) == (4, 10)
+
+        await pilot.resize_terminal(120, 60)
+        for _ in range(3):
+            await pilot.pause()
+        assert transcript.scroll_y == transcript.max_scroll_y == 0
+        transcript.set_reactive(TranscriptView.scroll_y, -5)
+
+        assert transcript.scroll_from_wheel("up", app.scroll_sensitivity_y)
+        for _ in range(3):
+            await pilot.pause()
+
+        assert transcript.scroll_y == 0
+        assert (transcript._window_start, transcript._window_end) == (4, 10)
 
 
 @pytest.mark.anyio
@@ -1692,6 +2055,35 @@ async def test_streaming_transcript_deltas_preserve_user_scrollback() -> None:
 
         assert transcript.scroll_y == scrollback_y
         assert not transcript.is_vertical_scroll_end
+
+
+@pytest.mark.anyio
+async def test_mouse_wheel_over_prompt_scrolls_started_conversation() -> None:
+    app = XoderTuiApp(FakeSession())
+
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        transcript = app.query_one("#transcript", TranscriptView)
+        app.state.add_item("user", "hello")
+        app._follow_transcript_output()
+        await transcript.append_item(
+            app.state.items[-1],
+            theme=app.tui_settings.resolved_theme,
+            scroll_end=True,
+        )
+        app._refresh()
+        await pilot.pause()
+        assert transcript.scroll_y == transcript.max_scroll_y > 0
+
+        await pilot._post_mouse_events(
+            [events.MouseScrollUp],
+            widget="#prompt-row",
+            offset=(2, 1),
+        )
+        await pilot.pause()
+
+        assert transcript.scroll_y < transcript.max_scroll_y
+        assert not transcript._follow_output
 
 
 @pytest.mark.anyio
@@ -1807,9 +2199,9 @@ async def test_tui_transcript_extracts_adjacent_message_selection() -> None:
         messages = list(app.query(TranscriptMessageWidget))
 
         app.screen.selections = {
-            messages[0]: Selection(Offset(6, 0), None),
+            messages[0]: Selection(Offset(8, 0), None),
             messages[1]: SELECT_ALL,
-            messages[2]: Selection(None, Offset(5, 0)),
+            messages[2]: Selection(None, Offset(7, 0)),
         }
 
         assert app.screen.get_selected_text() == "one\nmiddle message\nthird"
@@ -2272,15 +2664,6 @@ def test_terminal_command_prefix_span_detects_shell_mode_prefix() -> None:
     assert _terminal_command_prefix_span("hello ! pwd") is None
 
 
-def test_activity_prompt_border_uses_theme_accent_color_in_shell_mode() -> None:
-    theme = XODER_LIGHT_THEME
-
-    assert (
-        _activity_prompt_border_color(theme, frame=0, running=False, shell_mode=True)
-        == theme.accent
-    )
-
-
 @pytest.mark.anyio
 async def test_tui_app_highlights_prompt_shell_mode() -> None:
     app = XoderTuiApp(FakeSession())
@@ -2291,15 +2674,6 @@ async def test_tui_app_highlights_prompt_shell_mode() -> None:
         await pilot.pause()
 
         assert prompt.has_class("-shell-mode")
-        assert (
-            _activity_prompt_border_color(
-                app.tui_settings.resolved_theme,
-                frame=0,
-                running=False,
-                shell_mode=prompt.has_class("-shell-mode"),
-            )
-            == app.tui_settings.resolved_theme.accent
-        )
         assert prompt.get_line(0).spans[-1].start == 0
         assert prompt.get_line(0).spans[-1].end == 2
         assert str(prompt.get_line(0).spans[-1].style) == app.tui_settings.resolved_theme.accent
@@ -2400,7 +2774,7 @@ async def test_tui_sidebar_is_visible_on_medium_windows() -> None:
         assert sidebar.styles.border_top[0] == ""
         assert sidebar.styles.border_bottom[0] == ""
         assert sidebar_brand.region.bottom == sidebar.content_region.bottom
-        assert sidebar.styles.background == Color.parse(XODER_DARK_THEME.prompt_background)
+        assert sidebar.styles.background == Color.parse(XODER_DARK_THEME.sidebar_background)
         assert compact_info.display is True
         assert not app.has_class("-hide-sidebar")
 
@@ -2673,8 +3047,8 @@ def test_tui_app_uses_light_theme_css_variables() -> None:
     assert variables["xoder-screen-background"] == "#ffffff"
     assert variables["xoder-chrome-background"] == "#f3f4f6"
     assert variables["xoder-muted-text"] == "#475569"
-    assert variables["xoder-prompt-background"] == "#f8fafc"
-    assert variables["xoder-prompt-border"] == "#2563eb"
+    assert variables["xoder-prompt-background"] == "#ffffff"
+    assert variables["xoder-prompt-border"] == "#9ca1a5"
     assert variables["footer-background"] == "#f3f4f6"
     assert variables["footer-foreground"] == "#111827"
     assert variables["footer-description-foreground"] == "#111827"
@@ -2697,18 +3071,21 @@ def test_textual_theme_mapping_uses_xoder_theme_values() -> None:
     assert textual_theme.variables["xoder-screen-background"] == XODER_LIGHT_THEME.screen_background
 
 
-def test_xoder_dark_theme_uses_aqua_as_its_shared_accent() -> None:
+def test_xoder_dark_theme_keeps_black_background_and_original_text_colors() -> None:
     theme = TuiSettings().resolved_theme
 
     assert theme.accent == "#a7f3f0"
-    assert theme.highlight_background == theme.accent
+    assert theme.highlight_background == "#a7f3f0"
+    assert theme.highlight_text == "#061a1a"
     assert theme.markdown_heading == theme.accent
     assert theme.markdown_bullet == theme.accent
     assert theme.screen_background == "#000000"
     assert theme.transcript_background == "#000000"
     assert theme.prompt_background == "#101419"
-    assert theme.role_styles["user"].body.endswith(f"on {theme.prompt_background}")
-    assert theme.role_styles["assistant"].body.endswith("on #000000")
+    assert theme.sidebar_background == "#000000"
+    assert theme.border == "#000000"
+    assert theme.role_styles["user"].body == "#d8dee9"
+    assert theme.role_styles["assistant"].body == "#d8dee9"
 
 
 @pytest.mark.parametrize(
@@ -2735,9 +3112,10 @@ def test_xoder_light_theme_uses_light_chat_backgrounds() -> None:
 
     assert theme.screen_background == "#ffffff"
     assert theme.transcript_background == "#ffffff"
+    assert theme.prompt_background == "#ffffff"
     assert theme.prompt_text == "#111827"
     assert theme.syntax_theme == "ansi_light"
-    assert theme.role_styles["user"].body == f"#111827 on {theme.prompt_background}"
+    assert theme.role_styles["user"].body == "#111827"
     assert theme.role_styles["assistant"].body == "#111827"
     assert theme.role_styles["tool"].body == "#1f2937"
     assert theme.role_styles["error"].border == "#b91c1c"
@@ -2784,19 +3162,53 @@ def test_tui_app_loads_restored_messages_into_display_state() -> None:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    "theme",
+    [XODER_DARK_THEME, XODER_LIGHT_THEME],
+    ids=lambda theme: theme.name,
+)
+async def test_prompt_uses_terminal_background_with_only_horizontal_rules(
+    theme: TuiTheme,
+) -> None:
+    app = XoderTuiApp(FakeSession(), tui_settings=TuiSettings(theme=theme.name))
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        prompt_row = app.query_one("#prompt-row")
+        prompt = app.query_one("#prompt")
+
+    background = Color.parse(theme.screen_background)
+    rule = Color.parse(theme.prompt_border)
+    assert prompt_row.styles.background == background
+    assert prompt.styles.background == background
+    assert prompt_row.styles.border_top == ("solid", rule)
+    assert prompt_row.styles.border_bottom == ("solid", rule)
+    assert prompt_row.styles.border_left[0] == ""
+    assert prompt_row.styles.border_right[0] == ""
+    assert prompt.styles.border_top[0] == ""
+    assert prompt.styles.border_bottom[0] == ""
+    assert prompt.styles.border_left[0] == ""
+    assert prompt.styles.border_right[0] == ""
+
+
+@pytest.mark.anyio
 async def test_tui_app_shows_activity_indicator_while_running() -> None:
     app = XoderTuiApp(FakeSession())
 
     async with app.run_test():
         prompt = app.query_one("#prompt")
+        prompt_row = app.query_one("#prompt-row")
         indicator = app.query_one("#prompt-prefix")
+        border = Color.parse(app.tui_settings.resolved_theme.prompt_border)
 
         assert not app.query("#status")
         assert not app.query("#activity-status")
-        assert prompt.styles.border_left[1].hex.lower() == "#2d3748"
+        assert prompt.styles.border_left[0] == ""
         assert prompt.styles.border_top[0] == ""
         assert prompt.styles.border_right[0] == ""
         assert prompt.styles.border_bottom[0] == ""
+        assert prompt_row.styles.border_top == ("solid", border)
+        assert prompt_row.styles.border_bottom == ("solid", border)
         assert indicator.render().plain == "X"
 
         app.adapter.apply(AgentStartEvent())
@@ -2804,19 +3216,19 @@ async def test_tui_app_shows_activity_indicator_while_running() -> None:
 
         assert pytest.approx(tui_app.ACTIVITY_TICK_SECONDS) == 0.15
         assert tui_app.ACTIVITY_COLOR_FADE_STEPS == 24
-        assert prompt.styles.border_left[1].hex.lower() == "#2d3748"
+        assert prompt.styles.border_left[0] == ""
         assert indicator.render().plain.startswith("■")
 
         app._tick_activity()
 
-        assert prompt.styles.border_left[1].hex.lower() == "#2d3748"
+        assert prompt.styles.border_left[0] == ""
         assert indicator.render().plain.splitlines()[1] == "■"
 
         app.adapter.apply(AgentEndEvent())
         app._refresh()
 
         assert not app.query("#status")
-        assert prompt.styles.border_left[1].hex.lower() == "#2d3748"
+        assert prompt.styles.border_left[0] == ""
         assert indicator.render().plain == "X"
 
 
@@ -2891,7 +3303,9 @@ async def test_tui_app_clears_activity_status_on_error() -> None:
 
     async with app.run_test():
         prompt = app.query_one("#prompt")
+        prompt_row = app.query_one("#prompt-row")
         indicator = app.query_one("#prompt-prefix")
+        border = Color.parse(app.tui_settings.resolved_theme.prompt_border)
         app.adapter.apply(AgentStartEvent())
         app._refresh()
         app.adapter.apply(
@@ -2903,10 +3317,12 @@ async def test_tui_app_clears_activity_status_on_error() -> None:
 
         assert not app.query("#status")
         assert not app.query("#activity-status")
-        assert prompt.styles.border_left[1].hex.lower() == "#2d3748"
+        assert prompt.styles.border_left[0] == ""
         assert prompt.styles.border_top[0] == ""
         assert prompt.styles.border_right[0] == ""
         assert prompt.styles.border_bottom[0] == ""
+        assert prompt_row.styles.border_top == ("solid", border)
+        assert prompt_row.styles.border_bottom == ("solid", border)
         assert indicator.render().plain == "X"
 
 
@@ -5328,8 +5744,13 @@ async def test_tui_login_custom_provider_writes_catalog_and_preferences(
 
 
 @pytest.mark.anyio
-async def test_tui_login_custom_provider_opens_from_slash_command() -> None:
-    app = XoderTuiApp(FakeSession())
+@pytest.mark.parametrize(
+    "theme",
+    [XODER_DARK_THEME, XODER_LIGHT_THEME],
+    ids=lambda theme: theme.name,
+)
+async def test_tui_login_custom_provider_opens_from_slash_command(theme: TuiTheme) -> None:
+    app = XoderTuiApp(FakeSession(), tui_settings=TuiSettings(theme=theme.name))
 
     async with app.run_test() as pilot:
         prompt = app.query_one("#prompt")
@@ -5338,7 +5759,12 @@ async def test_tui_login_custom_provider_opens_from_slash_command() -> None:
         await pilot.pause()
 
         assert isinstance(app.screen, CustomProviderLoginScreen)
-        assert app.screen.query_one("#custom-provider-name", Input).has_focus
+        provider_name = app.screen.query_one("#custom-provider-name", Input)
+        assert provider_name.has_focus
+        assert provider_name.styles.border_top == (
+            "tall",
+            Color.parse(theme.role_styles["custom"].border),
+        )
 
 
 @pytest.mark.anyio

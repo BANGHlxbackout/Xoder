@@ -282,7 +282,8 @@ def _parse_roles(
             continue
         resolved_border = _substitute_vars(border.strip(), variables)
         resolved_body = _substitute_vars(body.strip(), variables)
-        # Borders feed Textual's styles.border_left as well as Rich tables.
+        # Role border values are semantic accent colors used by transcript
+        # prefixes and tool/status rendering in both Textual and Rich.
         border_error = _color_problem(resolved_border) or _textual_color_problem(resolved_border)
         if border_error is not None:
             problems.append(f"roles.{role}.border {border_error}")

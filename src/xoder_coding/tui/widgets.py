@@ -14,12 +14,14 @@ from rich.align import Align
 from rich.console import Console, Group, RenderableType
 from rich.markdown import CodeBlock, Heading, Markdown
 from rich.padding import Padding
+from rich.panel import Panel
 from rich.rule import Rule
 from rich.style import Style
 from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 from rich.theme import Theme
+from textual import events
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.content import Style as TextualStyle  # type: ignore[attr-defined]
 from textual.css.query import NoMatches
@@ -166,6 +168,20 @@ def _session_summary_fingerprint(
         tuple(skill.name for skill in session.skills),
         tuple(template.name for template in session.prompt_templates),
         tuple(context.path for context in session.context_files),
+    )
+
+
+def _welcome_panel_fingerprint(
+    session: SessionSummarySource,
+    *,
+    theme: TuiTheme,
+) -> tuple[object, ...]:
+    return (
+        theme.name,
+        session.cwd,
+        session.provider_name,
+        session.model,
+        tuple(tool.name for tool in session.tools),
     )
 
 
@@ -368,7 +384,6 @@ class TranscriptMessageWidget(Horizontal):
             self._body_background = None
         else:
             self._body_background = background
-            self.styles.border_left = ("tall", self._role_style.border)
             if background:
                 self.styles.background = background
 
@@ -418,6 +433,8 @@ class TranscriptMessageWidget(Horizontal):
 
     def get_selection(self, selection: Selection) -> tuple[str, str] | None:
         """Return selected plain text from this message, not rendered Markdown markup."""
+        if self.item.role == "user":
+            selection = _user_selection_to_source(selection)
         selected_text = _extract_text_selection(self.selection_text, selection)
         if not selected_text:
             return None
@@ -460,7 +477,6 @@ class TranscriptMessageWidget(Horizontal):
         foreground, background = _split_rich_style_colors(self._role_style.body)
         self._body_foreground = foreground
         self._body_background = background
-        self.styles.border_left = ("tall", self._role_style.border)
         if background:
             self.styles.background = background
         self._markdown_text = _transcript_item_markdown(
@@ -585,6 +601,46 @@ class StreamingTranscriptMessageWidget(ThemedMarkdownWidget):
         return selected_text, "\n"
 
 
+class WelcomePanel(Static):
+    """Non-persistent welcome content shown at the start of a new transcript."""
+
+    DEFAULT_CSS = """
+    WelcomePanel {
+        display: none;
+        width: 1fr;
+        height: auto;
+        margin: 0 1 2 1;
+    }
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._summary_fingerprint: tuple[object, ...] | None = None
+
+    def update_from_session(
+        self,
+        session: SessionSummarySource,
+        *,
+        theme: TuiTheme = XODER_DARK_THEME,
+    ) -> None:
+        """Redraw only when metadata displayed by the welcome panel changed."""
+        fingerprint = _welcome_panel_fingerprint(session, theme=theme)
+        if fingerprint == self._summary_fingerprint:
+            return
+        self._summary_fingerprint = fingerprint
+        self.update(render_welcome_panel(session, theme=theme))
+
+    def get_selection(self, selection: Selection) -> tuple[str, str] | None:
+        """Return selected text from the rendered welcome content."""
+        selection_text = "\n".join(
+            self.render_line(line).text.rstrip() for line in range(self.size.height)
+        )
+        selected_text = _extract_text_selection(selection_text, selection)
+        if not selected_text:
+            return None
+        return selected_text, "\n"
+
+
 class TranscriptView(VerticalScroll):
     """Scrollable transcript view backed by individual selectable message widgets."""
 
@@ -604,6 +660,8 @@ class TranscriptView(VerticalScroll):
         self._hidden_thinking_placeholder_visible = False
         self._follow_output = True
         self._follow_scroll_pending = False
+        self._resize_scroll_pending = False
+        self._welcome_scroll_reset_pending = False
         self._window_start = 0
         self._window_end = 0
         self._window_shift_pending = False
@@ -613,15 +671,99 @@ class TranscriptView(VerticalScroll):
         self._top_boundary: TranscriptWindowBoundary | None = None
         self._bottom_boundary: TranscriptWindowBoundary | None = None
 
+    def compose(self) -> Any:
+        yield WelcomePanel(id="welcome-panel")
+
     def on_mount(self) -> None:
         """Follow new transcript content until the user scrolls away."""
         self.follow_output()
 
     def follow_output(self) -> None:
         """Return to follow mode for a user-driven turn or explicit jump to bottom."""
+        self._welcome_scroll_reset_pending = False
         self._follow_output = True
-        self.anchor(True)
+        self.anchor(False)
         self._request_follow_scroll(force=True)
+
+    def on_resize(self, event: events.Resize) -> None:
+        """Keep the viewport inside valid bounds after terminal reflow."""
+        del event
+        if self._resize_scroll_pending:
+            return
+        self._resize_scroll_pending = True
+
+        def normalize_scroll_position() -> None:
+            self.anchor(False)
+            if self._follow_output:
+                self.scroll_end(animate=False, immediate=True, force=True)
+            else:
+                max_scroll_y = max(0, self.max_scroll_y)
+                scroll_y = min(max(0, self.scroll_y), max_scroll_y)
+                self.scroll_to(y=scroll_y, animate=False, immediate=True, force=True)
+            self.call_after_refresh(self._finish_resize_scroll)
+
+        self.call_after_refresh(normalize_scroll_position)
+
+    def _finish_resize_scroll(self) -> None:
+        """End resize normalization after its scroll update has been observed."""
+        self._resize_scroll_pending = False
+
+    def scroll_from_wheel(self, direction: Literal["up", "down"], amount: float) -> bool:
+        """Apply one wheel step and page history in the requested direction."""
+        max_scroll_y = max(0, self.max_scroll_y)
+        scroll_y = min(max(0, self.scroll_y), max_scroll_y)
+        was_clamped = scroll_y != self.scroll_y
+        if was_clamped:
+            self.anchor(False)
+            self.scroll_to(y=scroll_y, animate=False, immediate=True, force=True)
+            return True
+
+        state = self._render_state
+        if direction == "up":
+            if scroll_y <= 0 and self._window_start > 0:
+                self._schedule_window_shift("earlier")
+                return True
+            if scroll_y > 0:
+                self.scroll_relative(y=-amount, animate=False, immediate=True)
+                return True
+            return was_clamped
+
+        if state is not None and scroll_y >= max_scroll_y and self._window_end < len(state.items):
+            self._schedule_window_shift("later")
+            return True
+        if scroll_y < max_scroll_y:
+            self.scroll_relative(y=amount, animate=False, immediate=True)
+            return True
+        return was_clamped
+
+    def update_welcome(
+        self,
+        session: SessionSummarySource,
+        *,
+        theme: TuiTheme,
+        visible: bool,
+        reset_scroll: bool = False,
+    ) -> None:
+        """Update welcome content without projecting it into transcript messages."""
+        panel = self.query_one("#welcome-panel", WelcomePanel)
+        panel.display = visible
+        if visible:
+            panel.update_from_session(session, theme=theme)
+        if not reset_scroll:
+            return
+
+        self._welcome_scroll_reset_pending = True
+        self._follow_output = False
+        self.anchor(False)
+
+        def reset_to_top() -> None:
+            if not self._welcome_scroll_reset_pending:
+                return
+            self._welcome_scroll_reset_pending = False
+            self._follow_output = False
+            self.scroll_to(y=0, animate=False, immediate=True)
+
+        self.call_after_refresh(reset_to_top)
 
     def _request_follow_scroll(self, *, force: bool = False) -> None:
         """Scroll to the bottom after layout if follow mode is still active."""
@@ -632,7 +774,13 @@ class TranscriptView(VerticalScroll):
         def scroll_if_still_following() -> None:
             self._follow_scroll_pending = False
             if force or self._follow_output or self.is_vertical_scroll_end:
-                self.scroll_end(animate=False, immediate=True)
+                self.scroll_end(animate=False, immediate=True, force=True)
+
+                def settle_after_layout() -> None:
+                    if self._follow_output or self.is_vertical_scroll_end:
+                        self.scroll_end(animate=False, immediate=True, force=True)
+
+                self.call_after_refresh(settle_after_layout)
 
         self.call_after_refresh(scroll_if_still_following)
 
@@ -644,15 +792,18 @@ class TranscriptView(VerticalScroll):
     def watch_scroll_y(self, old_value: float, new_value: float) -> None:
         """Track follow mode and page the bounded transcript window near its edges."""
         super().watch_scroll_y(old_value, new_value)
+        if self._resize_scroll_pending or old_value < 0 or new_value < 0:
+            return
         if new_value < old_value:
             self._follow_output = False
+            if self.max_scroll_y > 0 and new_value <= 1 and self._window_start > 0:
+                self._schedule_window_shift("earlier")
         elif new_value >= self.max_scroll_y and self._window_is_latest:
             self._follow_output = True
-
-        if new_value <= 1 and self._window_start > 0:
-            self._schedule_window_shift("earlier")
-        elif (
-            new_value >= max(0, self.max_scroll_y - 1)
+        if (
+            new_value > old_value
+            and self.max_scroll_y > 0
+            and new_value >= max(0, self.max_scroll_y - 1)
             and self._render_state is not None
             and self._window_end < len(self._render_state.items)
         ):
@@ -742,7 +893,9 @@ class TranscriptView(VerticalScroll):
             id(item) in self._item_widgets for item in state.items
         )
         should_follow = self._should_follow_output
-        if not retained_projection:
+        if self._welcome_scroll_reset_pending:
+            should_follow = False
+        elif not retained_projection:
             self._follow_output = True
             should_follow = True
         self._render_state = state
@@ -1366,6 +1519,11 @@ def _transcript_plain_body_text(
     result_markup: str | None = None,
 ) -> RenderableType:
     """Return styled transcript text for selectable plain rows."""
+    if item.role == "user":
+        rendered = Text(overflow="fold", no_wrap=False)
+        rendered.append("› ", style=f"bold {theme.role_styles['user'].border}")
+        rendered.append(text, style=body_style)
+        return rendered
     if item.role != "tool":
         return Text(text, style=body_style, overflow="fold", no_wrap=False)
 
@@ -1458,6 +1616,17 @@ def _extract_text_selection(text: str, selection: Selection) -> str:
     return clipped_selection.extract(text)
 
 
+def _user_selection_to_source(selection: Selection) -> Selection:
+    """Translate screen offsets past the visible user prefix into source offsets."""
+
+    def translate(offset: Offset | None) -> Offset | None:
+        if offset is None or offset.y != 0:
+            return offset
+        return Offset(max(0, offset.x - 2), offset.y)
+
+    return Selection(translate(selection.start), translate(selection.end))
+
+
 def _clip_selection_to_text(selection: Selection, text: str) -> Selection:
     lines = text.splitlines()
     if not lines:
@@ -1544,6 +1713,64 @@ def render_session_sidebar(
     return Group(*separated_sections)
 
 
+def render_welcome_panel(
+    session: SessionSummarySource,
+    *,
+    theme: TuiTheme = XODER_DARK_THEME,
+) -> RenderableType:
+    """Render the non-persistent welcome card for a new coding session."""
+    title = Text()
+    title.append(">_  ", style=f"bold {theme.accent}")
+    title.append(f"Xoder v{current_version()}", style=f"bold {theme.prompt_text}")
+    subtitle = Text("Personal agent for your workspace", style=theme.muted_text)
+
+    details = Table.grid(expand=True)
+    details.add_column(width=11, no_wrap=True)
+    details.add_column(ratio=1, overflow="fold")
+    details.add_column(width=8, justify="right", no_wrap=True)
+
+    workspace = Text(_short_path(session.cwd), style=theme.prompt_text, overflow="fold")
+    model = Text(style=theme.prompt_text, overflow="fold")
+    model.append(session.provider_name)
+    model.append(" · ", style=theme.muted_text)
+    model.append(session.model)
+    tools = Text(
+        " · ".join(tool.name for tool in session.tools) or "No tools",
+        style=theme.prompt_text,
+        overflow="fold",
+    )
+    details.add_row(Text("workspace", style=theme.muted_text), workspace, Text(""))
+    details.add_row(
+        Text("model", style=theme.muted_text),
+        model,
+        Text("/model", style=theme.markdown_link, justify="right"),
+    )
+    details.add_row(Text("tools", style=theme.muted_text), tools, Text(""))
+
+    card = Panel(
+        Group(title, subtitle, Text(""), details),
+        border_style=theme.prompt_border,
+        style=f"{theme.prompt_text} on {theme.prompt_background}",
+        padding=(0, 2),
+        expand=True,
+    )
+
+    hints = Table.grid()
+    hints.add_column(width=12, no_wrap=True)
+    hints.add_column(ratio=1, overflow="fold")
+    for command, description in (
+        ("@ files", "add project context"),
+        ("/ commands", "open Xoder commands"),
+        ("! shell", "run a local command"),
+    ):
+        hints.add_row(
+            Text(command, style=theme.markdown_link),
+            Text(description, style=theme.muted_text),
+        )
+
+    return Group(card, Text(""), Padding(hints, (0, 2)))
+
+
 def _sidebar_section(
     title: str,
     body: RenderableType,
@@ -1603,6 +1830,14 @@ def render_chat_item(
             raw_text=item.text,
             body_style=role_style.body,
         )
+    elif item.role == "user":
+        user_body = Text(overflow="fold", no_wrap=False)
+        user_body.append("› ", style=f"bold {role_style.border}")
+        user_body.append(
+            _visible_chat_text(item, show_tool_results=show_tool_results),
+            style=role_style.body,
+        )
+        body = user_body
     else:
         body = (
             _render_tool_chat_body(
@@ -1622,14 +1857,7 @@ def render_chat_item(
                 theme=theme,
             )
         )
-    table = Table.grid(expand=True)
-    table.add_column(width=1, style=role_style.border)
-    table.add_column(ratio=1, style=role_style.body)
-    table.add_row(
-        Align.left(Text("▌", style=role_style.border)),
-        Padding(body, (0, 1, 0, 1), style=role_style.body),
-    )
-    return Padding(table, (1, 1, 1, 0), style=role_style.body)
+    return Padding(body, (1, 1), style=role_style.body)
 
 
 def _chat_item_role_style(item: ChatItem, theme: TuiTheme) -> TuiRoleStyle:

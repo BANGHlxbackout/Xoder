@@ -589,7 +589,7 @@ wheels = [
 
 [[package]]
 name = "xoder-ai"
-version = "0.2.2"
+version = "0.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },

@@ -172,7 +172,7 @@ def test_tui_keybindings_serialize_to_json() -> None:
 
 def test_get_tui_theme_returns_builtin_theme() -> None:
     assert get_tui_theme("high-contrast").prompt_border == "#00ff66"
-    assert get_tui_theme("xoder-light").prompt_border == "#2563eb"
+    assert get_tui_theme("xoder-light").prompt_border == "#9ca1a5"
     assert get_tui_theme("xoder-dark").screen_background == "#000000"
 
 

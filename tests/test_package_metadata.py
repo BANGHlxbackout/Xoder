@@ -6,6 +6,12 @@ from pathlib import Path
 from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
+README_PATH = ROOT / "README.md"
+README_ZH_CN_PATH = ROOT / "README.zh-CN.md"
+PI_REPOSITORY_URL = "https://github.com/earendil-works/pi"
+DEMO_GIF_PLACEHOLDER = (
+    "<!-- XODER_DEMO_GIF_PLACEHOLDER: insert docs/images/xoder-demo.gif here after capture. -->"
+)
 RELEASE_NOTES_SOURCE_PATH = (
     ROOT / "src" / "xoder_coding" / "data" / "release-notes" / "releases.json"
 )
@@ -35,6 +41,7 @@ EXPECTED_SDIST_INCLUDES = [
     "/CONTRIBUTING.md",
     "/LICENSE",
     "/README.md",
+    "/README.zh-CN.md",
     "/examples",
     "/pyproject.toml",
     "/src/xoder_ai",
@@ -54,7 +61,8 @@ BUNDLED_PUBLIC_REFERENCE_FILES = (
     ROOT / "src" / "xoder_coding" / "data" / "skills" / "xoder-model-catalog" / "SKILL.md",
 )
 STRICT_PUBLIC_FILES = (
-    ROOT / "README.md",
+    README_PATH,
+    README_ZH_CN_PATH,
     ROOT / "CONTRIBUTING.md",
     ROOT / "pyproject.toml",
     ROOT / ".github" / "workflows" / "ci.yml",
@@ -70,6 +78,7 @@ FINAL_SNAPSHOT_FILES = (
     "CONTRIBUTING.md",
     "LICENSE",
     "README.md",
+    "README.zh-CN.md",
     "pyproject.toml",
     "uv.lock",
 )
@@ -171,11 +180,33 @@ def test_public_release_scope_is_xoder_only() -> None:
         assert "website/" not in content
         assert "dev-notes/" not in content
 
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    readme = README_PATH.read_text(encoding="utf-8")
+    readme_zh_cn = README_ZH_CN_PATH.read_text(encoding="utf-8")
     assert readme.startswith("# Xoder\n")
+    assert readme_zh_cn.startswith("# Xoder\n")
     assert "docs/assets/tau-header.svg" not in readme
-    assert re.search(r"not yet\s+published to PyPI", readme)
+    assert "not yet published to PyPI" not in readme
+    assert "还没有发布到 PyPI" not in readme_zh_cn
     assert "pypi.org/project/xoder-ai" not in readme
+    for content in (readme, readme_zh_cn):
+        assert "xoder-ai==0.0.0" in content
+        assert "uv tool install xoder-ai==0.0.0" in content
+        assert "uv add xoder-ai==0.0.0" in content
+        assert "python -m pip install xoder-ai==0.0.0" in content
+        assert "Python 3.12" in content
+        assert "FakeProvider" in content
+    assert 'href="README.zh-CN.md"' in readme
+    assert 'href="README.md"' in readme_zh_cn
+    assert PI_REPOSITORY_URL in readme
+    assert PI_REPOSITORY_URL in readme_zh_cn
+    assert DEMO_GIF_PLACEHOLDER in readme
+    assert DEMO_GIF_PLACEHOLDER in readme_zh_cn
+    assert "## Inspiration" not in readme
+    assert "## 灵感来源" not in readme_zh_cn
+    assert readme.index("## What is Xoder?") < readme.index(PI_REPOSITORY_URL)
+    assert readme.index(PI_REPOSITORY_URL) < readme.index("## Why Xoder?")
+    assert readme_zh_cn.index("## Xoder 是什么？") < readme_zh_cn.index(PI_REPOSITORY_URL)
+    assert readme_zh_cn.index(PI_REPOSITORY_URL) < readme_zh_cn.index("## 为什么选择 Xoder？")
 
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "working-directory: website" not in ci
