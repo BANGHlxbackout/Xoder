@@ -1,4 +1,10 @@
-# Xoder
+<p align="center">
+  <img
+    src="https://raw.githubusercontent.com/BANGHlxbackout/Xoder/main/website/Xoder_logo.png"
+    alt="Xoder"
+    width="360"
+  />
+</p>
 
 <p align="center">
   <strong>一个可定制的 Python agent harness，并内置完整的终端 coding agent。</strong>
@@ -19,18 +25,13 @@
   <a href="#基于-harness-构建">作为库使用</a>
 </p>
 
-Xoder 提供一组可复用的 agent 原语，让你围绕自己的模型、工具、工作流和
-界面构建能够调用工具的 agent。它同时内置了一个完整的终端 coding agent，
-用真实应用验证这些原语：交互式 TUI、文件和 shell 工具、持久化 session、
-模型配置、skills、extensions、prompt templates 和 themes。
-
-你可以直接把 Xoder 当作终端 agent 使用，也可以改造内置的 coding 工作流，
-或者把可移植的 `xoder_agent` harness 嵌入自己的应用。
-
 > **项目状态：** Xoder `0.0.0` 是早期版本，需要 Python 3.12 或更高版本。
 > 随着项目继续开发，公开 API 和工作流仍可能发生变化。
 
-## Xoder 是什么？
+# Xoder Agent Harness
+
+Xoder 是一个可定制的 Python agent-harness 项目，并包含一个基于同一套可复用
+runtime 构建、能够自我扩展的终端 coding agent。
 
 Xoder 的灵感来自
 [Pi 的极简、可扩展 agent-harness 架构](https://github.com/earendil-works/pi)。

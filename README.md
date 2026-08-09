@@ -1,4 +1,10 @@
-# Xoder
+<p align="center">
+  <img
+    src="https://raw.githubusercontent.com/BANGHlxbackout/Xoder/main/website/Xoder_logo.png"
+    alt="Xoder"
+    width="360"
+  />
+</p>
 
 <p align="center">
   <strong>A customizable Python agent harness—with a complete terminal coding agent included.</strong>
@@ -19,19 +25,13 @@
   <a href="#build-with-the-harness">Library</a>
 </p>
 
-Xoder provides reusable primitives for building tool-using agents around your
-own models, tools, workflows, and interfaces. It also ships with a complete
-terminal coding agent that exercises those primitives in a real application:
-an interactive TUI, file and shell tools, persistent sessions, model
-configuration, skills, extensions, prompts, and themes.
-
-Use Xoder as a terminal agent, adapt the included coding workflow, or embed the
-portable `xoder_agent` harness in an application of your own.
-
 > **Project status:** Xoder `0.0.0` is an early release and requires Python 3.12
 > or newer. Public APIs and workflows may change as the project develops.
 
-## What is Xoder?
+# Xoder Agent Harness
+
+Xoder is a customizable Python agent-harness project. It includes a
+self-extensible terminal coding agent built from the same reusable runtime.
 
 Xoder is inspired by
 [Pi's minimalist and extensible agent-harness architecture](https://github.com/earendil-works/pi).
