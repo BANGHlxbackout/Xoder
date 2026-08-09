@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Xoder 是一个可直接运行、可嵌入、可替换、可扩展的 Python agent harness。"
+    />
+    <meta name="theme-color" content="#f3f0e8" />
+    <title>Xoder — A harness you can make your own</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./script.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到主要内容</a>
+
+    <header class="site-header">
+      <a class="wordmark" href="#top" aria-label="Xoder 首页">Xoder</a>
+      <nav class="site-nav" aria-label="主要导航">
+        <a href="#layers">Harness</a>
+        <a href="#providers">Providers</a>
+        <a href="#modes">Modes</a>
+        <a href="https://github.com/BANGHlxbackout/Xoder">GitHub ↗</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero section-grid" id="top" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">PYTHON AGENT HARNESS · v0.0.0</p>
+          <h1 id="hero-title">
+            More than a coding agent.
+            <em>A harness you can make your own.</em>
+          </h1>
+          <p class="hero-description">
+            Xoder 是一个可直接运行的终端 Agent，<br />
+            也是一套可嵌入、可替换、可扩展的 Python agent harness。
+          </p>
+
+          <div class="install-command" aria-label="安装命令">
+            <code><span>$</span> uv tool install xoder-ai</code>
+            <button class="copy-button" type="button" data-copy="uv tool install xoder-ai">
+              COPY
+            </button>
+          </div>
+
+          <a class="text-link" href="#layers">Explore the harness →</a>
+
+          <a class="github-star" href="https://github.com/BANGHlxbackout/Xoder">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path
+                d="M12 .297C5.37.297 0 5.67 0 12.297c0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.73.083-.73 1.205.085 1.84 1.237 1.84 1.237 1.07 1.835 2.807 1.305 3.492.998.108-.776.42-1.305.763-1.605-2.665-.303-5.467-1.332-5.467-5.93 0-1.31.468-2.38 1.235-3.22-.123-.303-.535-1.523.117-3.176 0 0 1.008-.322 3.3 1.23a11.52 11.52 0 0 1 3.003-.404c1.02.005 2.047.138 3.003.404 2.29-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.873.12 3.176.77.84 1.233 1.91 1.233 3.22 0 4.61-2.807 5.624-5.48 5.92.43.372.823 1.102.823 2.222 0 1.606-.015 2.898-.015 3.293 0 .32.216.694.825.576C20.565 22.092 24 17.597 24 12.297 24 5.67 18.627.297 12 .297Z"
+              />
+            </svg>
+            <span>Star Xoder on GitHub</span>
+            <span class="star-symbol" aria-hidden="true">★</span>
+          </a>
+        </div>
+
+        <div class="tui-frame" aria-label="真实 Xoder TUI 截图预留位置">
+          <div class="tui-frame-bar">
+            <span>XODER / TUI</span>
+            <span class="frame-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          </div>
+          <div class="tui-placeholder">
+            <span class="terminal-mark" aria-hidden="true">&gt;_</span>
+            <strong>REAL XODER TUI CAPTURE</strong>
+            <p>真实 TUI 主展示图将在提供后替换此区域。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="editorial-section layers-section" id="layers" aria-labelledby="layers-title">
+        <div class="section-marker"><span>01</span><em>3<span class="marker-hyphen">-</span>layers</em></div>
+        <h2 id="layers-title">One harness, three clear layers.</h2>
+
+        <div class="layers-grid">
+          <article class="layer-card">
+            <div class="layer-top"><code>xoder_ai</code><span>I</span></div>
+            <h3>One stream, many models</h3>
+            <p>Provider 适配器把不同模型的流式响应转换为统一、带类型的事件。</p>
+            <small>PROVIDER / MODEL STREAMING</small>
+          </article>
+          <article class="layer-card">
+            <div class="layer-top"><code>xoder_agent</code><span>II</span></div>
+            <h3>The reusable harness</h3>
+            <p>消息、工具调用、事件流、取消、队列和会话状态保持独立于界面。</p>
+            <small>PORTABLE AGENT RUNTIME</small>
+          </article>
+          <article class="layer-card">
+            <div class="layer-top"><code>xoder_coding</code><span>III</span></div>
+            <h3>Where it becomes yours</h3>
+            <p>CLI、TUI、文件、Shell、技能、扩展和持久会话组成完整 Coding App。</p>
+            <small>REFERENCE CODING APP</small>
+          </article>
+        </div>
+      </section>
+
+      <section class="editorial-section providers-section" id="providers" aria-labelledby="providers-title">
+        <div class="section-marker"><span>02</span><em>providers</em></div>
+        <div class="split-layout">
+          <div>
+            <h2 id="providers-title">20+ providers,<br /><em>hundreds of models.</em></h2>
+          </div>
+          <div class="prose-stack">
+            <p class="provider-list">
+              OpenAI、Anthropic、Google Gemini、DeepSeek、xAI、Groq、Cerebras、NVIDIA、
+              OpenRouter、Mistral、MiniMax、Kimi、Hugging Face、GitHub Copilot，and more。
+              通过 API Key 或 OAuth 完成认证。
+            </p>
+            <p>
+              使用 <code>/model</code> 选择模型；通过 <code>Ctrl+P</code>
+              在自己的 scoped models 之间快速轮换。
+            </p>
+            <p>
+              也可以通过 <code>/login custom</code> 接入自己的 OpenAI-compatible
+              Provider 和模型，继续使用同一套事件、工具与会话契约。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="editorial-section context-section" id="context" aria-labelledby="context-title">
+        <div class="section-marker"><span>03</span><em>context<span class="marker-hyphen">-</span>engineering</em></div>
+        <div class="context-layout">
+          <div class="context-copy">
+            <h2 id="context-title">Context engineering.</h2>
+            <p>
+              一个可靠的 Agent 不只是需要更大的 context window，还需要控制哪些内容进入上下文、历史如何演进，以及项目资源何时加载。Xoder 将这些能力放在可检查、可替换的边界上。
+            </p>
+          </div>
+
+          <div class="context-details" aria-label="Xoder 上下文工程能力">
+            <div class="context-item">
+              <span>01</span>
+              <div>
+                <h3><code>AGENTS.md</code></h3>
+                <p>项目指令可以从用户目录、父目录和当前项目加载，使同一个 harness 在不同代码库中获得不同工作方式。</p>
+              </div>
+            </div>
+            <div class="context-item">
+              <span>02</span>
+              <div>
+                <h3>Compaction</h3>
+                <p>接近 context limit 时自动总结较早的消息，并保留近期对话与继续任务需要的信息。也可以使用 <code>/compact</code> 主动压缩；发生 context overflow 时，Xoder 会尝试压缩并继续。</p>
+              </div>
+            </div>
+            <div class="context-item">
+              <span>03</span>
+              <div>
+                <h3>Skills</h3>
+                <p>Skills 将专门指令和工具说明组织成按需加载的能力包，不需要把所有内容永久塞进 system prompt。</p>
+              </div>
+            </div>
+            <div class="context-item">
+              <span>04</span>
+              <div>
+                <h3>Prompt templates</h3>
+                <p>可复用的 Markdown prompt，通过 <code>/name</code> 形式展开，并支持参数替换。</p>
+              </div>
+            </div>
+            <div class="context-item">
+              <span>05</span>
+              <div>
+                <h3>Dynamic context</h3>
+                <p>Python extensions 可以处理输入、观察 lifecycle events、拦截工具调用与结果，并向当前工作流发送自定义消息。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="editorial-section history-section" id="history" aria-labelledby="history-title">
+        <div class="section-marker"><span>04</span><em>session<span class="marker-hyphen">-</span>history</em></div>
+        <div class="split-layout history-layout">
+          <div>
+            <h2 id="history-title">Tree<span class="title-hyphen">-</span>structured,<br /><em>durable history.</em></h2>
+            <p class="section-lead">
+              会话以可读的 JSONL 记录持久保存。你可以回到过去的节点创建分支，恢复已有会话，
+              或导出完整记录，而不需要丢掉原来的路径。
+            </p>
+          </div>
+
+          <div class="history-tree" aria-label="树状会话示意">
+            <div class="history-row active"><code>/tree</code><span>选择历史节点</span></div>
+            <div class="tree-rail">
+              <span class="tree-node">prompt</span>
+              <span class="tree-node">tool call</span>
+              <span class="tree-node branch">new branch</span>
+              <span class="tree-node">continue</span>
+            </div>
+            <div class="history-actions">
+              <span><code>/resume</code> 恢复会话</span>
+              <span><code>/export</code> 导出 HTML / JSONL</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="editorial-section modes-section" id="modes" aria-labelledby="modes-title">
+        <div class="section-marker"><span>05</span><em>ways<span class="marker-hyphen">-</span>to<span class="marker-hyphen">-</span>run</em></div>
+        <h2 id="modes-title">Three modes.</h2>
+
+        <div class="modes-copy">
+          <div class="mode-row">
+            <h3>Interactive</h3>
+            <p>
+              进入完整的 Textual TUI，在同一场会话中查看流式回复、调用工具、切换模型，
+              并恢复或继续已有的会话历史。适合需要持续协作和人工控制的日常工作。
+            </p>
+          </div>
+          <div class="mode-row">
+            <h3>Print / JSON</h3>
+            <p>
+              使用 <code>xoder -p "query"</code> 直接执行脚本、自动化流程和一次性任务；
+              使用 <code>-o json</code> 输出结构化事件流，方便交给其他程序继续处理。
+            </p>
+          </div>
+          <div class="mode-row">
+            <h3>SDK</h3>
+            <p>
+              安装 <code>xoder-ai</code> 后，从 <code>xoder_agent</code> 导入
+              <code>AgentHarness</code> 与 <code>AgentHarnessConfig</code>，组合自己的 Provider、
+              模型、工具和事件监听器，把可复用的 Xoder agent loop 嵌入 Python 应用。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="editorial-section make-section" id="make-it-yours" aria-labelledby="make-title">
+        <div class="section-marker"><span>06</span><em>make<span class="marker-hyphen">-</span>it<span class="marker-hyphen">-</span>yours</em></div>
+        <div class="make-layout">
+          <div class="make-copy">
+            <h2 id="make-title">Replace the parts.<br /><em>Keep the contract.</em></h2>
+            <p>
+              Xoder 不把 Agent 固定成一个产品。替换 Provider、工具、工作流或界面时，
+              核心消息和事件边界仍然保持清晰。
+            </p>
+            <ul class="replace-list">
+              <li><span>PROVIDER</span> 接入新的模型协议</li>
+              <li><span>TOOLS</span> 注册自己的异步工具</li>
+              <li><span>WORKFLOW</span> 扩展技能、命令与生命周期</li>
+              <li><span>INTERFACE</span> 使用 TUI、脚本或自己的前端</li>
+            </ul>
+          </div>
+
+          <div class="sdk-snippet" aria-label="Xoder SDK 最小示例">
+            <div class="snippet-bar"><span>PYTHON / SDK</span><span>xoder_agent</span></div>
+            <pre><code><span class="code-keyword">from</span> xoder_agent <span class="code-keyword">import</span> (
+    AgentHarness,
+    AgentHarnessConfig,
+)
+
+harness = AgentHarness(
+    AgentHarnessConfig(
+        provider=provider,
+        model=<span class="code-string">"your-model"</span>,
+        tools=tools,
+    )
+)</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="closing-section" aria-labelledby="closing-title">
+        <img
+          class="closing-logo"
+          src="assets/xoder-logo-website.png"
+          alt="Xoder"
+          width="340"
+          height="194"
+          loading="lazy"
+        />
+        <p class="closing-eyebrow">BUILD THE AGENT YOU ACTUALLY WANT.</p>
+        <h2 id="closing-title">Start with Xoder.<br /><em>Make it yours.</em></h2>
+        <p class="closing-summary">
+          从可以直接运行的终端 Agent 开始，保留清晰的边界，逐步替换成真正属于你的
+          Provider、工具、工作流和界面。
+        </p>
+        <div class="closing-links">
+          <a class="closing-link" href="https://github.com/BANGHlxbackout/Xoder">
+            <small>01 / REPOSITORY</small>
+            <span>Explore on GitHub</span>
+            <b aria-hidden="true">↗</b>
+          </a>
+          <a class="closing-link" href="https://github.com/earendil-works/pi">
+            <small>02 / INSPIRATION</small>
+            <span>Inspired by Pi</span>
+            <b aria-hidden="true">↗</b>
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>Xoder · Python Agent Harness</span>
+      <span>Early release · v0.0.0 · Python 3.12+</span>
+      <a href="https://pypi.org/project/xoder-ai/">PyPI ↗</a>
+    </footer>
+  </body>
+</html>
