@@ -66,8 +66,12 @@ STRICT_PUBLIC_FILES = (
     ROOT / "CONTRIBUTING.md",
     ROOT / "pyproject.toml",
     ROOT / ".github" / "workflows" / "ci.yml",
+    ROOT / ".github" / "workflows" / "pages.yml",
     ROOT / "examples" / "extensions" / "hello_tool.py",
     ROOT / "examples" / "extensions" / "permission_gate.py",
+    ROOT / "website" / "index.html",
+    ROOT / "website" / "script.js",
+    ROOT / "website" / "styles.css",
     RELEASE_NOTES_SOURCE_PATH,
 ) + BUNDLED_PUBLIC_REFERENCE_FILES
 TAU_BRAND_PATTERN = re.compile(r"(?i)(?<![a-z])tau(?![a-z])|τ")
@@ -75,6 +79,7 @@ FINAL_SNAPSHOT_FILES = (
     ".gitignore",
     ".python-version",
     ".github/workflows/ci.yml",
+    ".github/workflows/pages.yml",
     "CONTRIBUTING.md",
     "LICENSE",
     "README.md",
@@ -88,6 +93,7 @@ FINAL_SNAPSHOT_DIRS = (
     "src/xoder_agent",
     "src/xoder_coding",
     "tests",
+    "website",
 )
 FINAL_SNAPSHOT_EXCLUDED_PREFIXES = (
     ".git",
@@ -106,7 +112,6 @@ FINAL_SNAPSHOT_EXCLUDED_PREFIXES = (
     "src/tau_ai",
     "src/tau_agent",
     "src/tau_coding",
-    "website",
 )
 
 
@@ -177,13 +182,14 @@ def test_public_release_scope_is_xoder_only() -> None:
         assert TAU_BRAND_PATTERN.search(content) is None, f"Tau branding remains in {path}"
         assert "github.com/huggingface/tau" not in content
         assert "twotimespi.dev" not in content
-        assert "website/" not in content
         assert "dev-notes/" not in content
 
     readme = README_PATH.read_text(encoding="utf-8")
     readme_zh_cn = README_ZH_CN_PATH.read_text(encoding="utf-8")
-    assert readme.startswith("# Xoder\n")
-    assert readme_zh_cn.startswith("# Xoder\n")
+    assert readme.count("# Xoder Agent Harness\n") == 1
+    assert readme_zh_cn.count("# Xoder Agent Harness\n") == 1
+    assert "website/Xoder_logo.png" in readme
+    assert "website/Xoder_logo.png" in readme_zh_cn
     assert "docs/assets/tau-header.svg" not in readme
     assert "not yet published to PyPI" not in readme
     assert "还没有发布到 PyPI" not in readme_zh_cn
@@ -203,9 +209,9 @@ def test_public_release_scope_is_xoder_only() -> None:
     assert DEMO_GIF_PLACEHOLDER in readme_zh_cn
     assert "## Inspiration" not in readme
     assert "## 灵感来源" not in readme_zh_cn
-    assert readme.index("## What is Xoder?") < readme.index(PI_REPOSITORY_URL)
+    assert readme.index("# Xoder Agent Harness") < readme.index(PI_REPOSITORY_URL)
     assert readme.index(PI_REPOSITORY_URL) < readme.index("## Why Xoder?")
-    assert readme_zh_cn.index("## Xoder 是什么？") < readme_zh_cn.index(PI_REPOSITORY_URL)
+    assert readme_zh_cn.index("# Xoder Agent Harness") < readme_zh_cn.index(PI_REPOSITORY_URL)
     assert readme_zh_cn.index(PI_REPOSITORY_URL) < readme_zh_cn.index("## 为什么选择 Xoder？")
 
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
@@ -221,7 +227,8 @@ def test_planned_public_snapshot_manifest_matches_phase_three_boundary() -> None
     assert set(FINAL_SNAPSHOT_FILES) <= manifest
     assert all((ROOT / path).is_file() for path in manifest)
     assert {path for path in manifest if path.startswith(".github/workflows/")} == {
-        ".github/workflows/ci.yml"
+        ".github/workflows/ci.yml",
+        ".github/workflows/pages.yml",
     }
     assert all(Path(path).name != ".DS_Store" for path in manifest)
     for excluded in FINAL_SNAPSHOT_EXCLUDED_PREFIXES:
