@@ -2,8 +2,17 @@ const copyButtons = document.querySelectorAll("[data-copy]");
 
 async function copyText(text) {
   if (navigator.clipboard && window.isSecureContext) {
-    await navigator.clipboard.writeText(text);
-    return;
+    try {
+      await Promise.race([
+        navigator.clipboard.writeText(text),
+        new Promise((_, reject) => {
+          window.setTimeout(() => reject(new Error("Clipboard timeout")), 500);
+        }),
+      ]);
+      return;
+    } catch {
+      // Fall back when clipboard permissions are unavailable or the browser does not respond.
+    }
   }
 
   const input = document.createElement("textarea");
@@ -13,8 +22,12 @@ async function copyText(text) {
   input.style.opacity = "0";
   document.body.appendChild(input);
   input.select();
-  document.execCommand("copy");
+  const copied = document.execCommand("copy");
   input.remove();
+
+  if (!copied) {
+    throw new Error("Copy command failed");
+  }
 }
 
 copyButtons.forEach((button) => {

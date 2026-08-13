@@ -9,8 +9,8 @@
     />
     <meta name="theme-color" content="#f3f0e8" />
     <title>Xoder — A harness you can make your own</title>
-    <link rel="stylesheet" href="./styles.css" />
-    <script src="./script.js" defer></script>
+    <link rel="stylesheet" href="./styles.css?v=20260813-1" />
+    <script src="./script.js?v=20260812-2" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">跳到主要内容</a>
@@ -28,7 +28,6 @@
     <main id="main">
       <section class="hero section-grid" id="top" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <p class="eyebrow">PYTHON AGENT HARNESS · v0.0.0</p>
           <h1 id="hero-title">
             More than a coding agent.
             <em>A harness you can make your own.</em>
@@ -58,15 +57,20 @@
           </a>
         </div>
 
-        <div class="tui-frame" aria-label="真实 Xoder TUI 截图预留位置">
-          <div class="tui-frame-bar">
-            <span>XODER / TUI</span>
-            <span class="frame-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <div class="tui-frame">
+          <div class="tui-media tui-media-hero">
+            <img
+              src="assets/xoder-tui-window.png?v=20260812-2"
+              alt="Xoder 读取项目文件并解释 TUI 启动调用链的真实会话"
+              width="2135"
+              height="1501"
+              decoding="async"
+              fetchpriority="high"
+            />
           </div>
-          <div class="tui-placeholder">
-            <span class="terminal-mark" aria-hidden="true">&gt;_</span>
-            <strong>REAL XODER TUI CAPTURE</strong>
-            <p>真实 TUI 主展示图将在提供后替换此区域。</p>
+          <div class="tui-frame-meta" aria-hidden="true">
+            <span>REAL XODER SESSION</span>
+            <span>READ · REASON · RESPOND</span>
           </div>
         </div>
       </section>
@@ -103,20 +107,35 @@
           <div>
             <h2 id="providers-title">20+ providers,<br /><em>hundreds of models.</em></h2>
           </div>
-          <div class="prose-stack">
-            <p class="provider-list">
-              OpenAI、Anthropic、Google Gemini、DeepSeek、xAI、Groq、Cerebras、NVIDIA、
-              OpenRouter、Mistral、MiniMax、Kimi、Hugging Face、GitHub Copilot，and more。
-              通过 API Key 或 OAuth 完成认证。
-            </p>
-            <p>
-              使用 <code>/model</code> 选择模型；通过 <code>Ctrl+P</code>
-              在自己的 scoped models 之间快速轮换。
-            </p>
-            <p>
-              也可以通过 <code>/login custom</code> 接入自己的 OpenAI-compatible
-              Provider 和模型，继续使用同一套事件、工具与会话契约。
-            </p>
+          <div class="provider-showcase">
+            <ul class="provider-grid" aria-label="Xoder 支持的模型 Provider">
+              <li>OpenAI</li>
+              <li>Anthropic</li>
+              <li>Gemini</li>
+              <li>DeepSeek</li>
+              <li>xAI</li>
+              <li>Groq</li>
+              <li>Cerebras</li>
+              <li>NVIDIA</li>
+              <li>OpenRouter</li>
+              <li>Mistral</li>
+              <li>MiniMax</li>
+              <li>Kimi</li>
+              <li>Hugging Face</li>
+              <li>GitHub Copilot</li>
+              <li>+ More</li>
+            </ul>
+            <p class="provider-auth">通过 API Key 或 OAuth 完成认证。</p>
+            <div class="provider-actions">
+              <article class="provider-action">
+                <code>/model</code>
+                <p>选择当前模型，并通过 <code>Ctrl+P</code> 在 scoped models 间快速切换。</p>
+              </article>
+              <article class="provider-action">
+                <code>/login custom</code>
+                <p>接入自己的 OpenAI-compatible Provider，继续使用同一套事件、工具与会话契约。</p>
+              </article>
+            </div>
           </div>
         </div>
       </section>
@@ -202,29 +221,52 @@
         <div class="section-marker"><span>05</span><em>ways<span class="marker-hyphen">-</span>to<span class="marker-hyphen">-</span>run</em></div>
         <h2 id="modes-title">Three modes.</h2>
 
-        <div class="modes-copy">
-          <div class="mode-row">
+        <div class="modes-grid">
+          <article class="mode-panel">
+            <div class="mode-kicker"><span>01</span><small>INTERACTIVE</small></div>
+            <div class="mode-preview mode-preview-tui">
+              <div class="mode-preview-bar"><code>$ xoder</code><span>TEXTUAL TUI</span></div>
+              <div class="mode-tui-crop">
+                <img
+                  src="assets/xoder-tui-interactive.png?v=20260812-3"
+                  alt="Xoder TUI 中的文件读取和回答过程"
+                  width="1555"
+                  height="780"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </div>
+            </div>
             <h3>Interactive</h3>
-            <p>
-              进入完整的 Textual TUI，在同一场会话中查看流式回复、调用工具、切换模型，
-              并恢复或继续已有的会话历史。适合需要持续协作和人工控制的日常工作。
-            </p>
-          </div>
-          <div class="mode-row">
+            <p>在完整 Textual TUI 中持续对话、查看工具调用，并恢复已有会话。</p>
+          </article>
+
+          <article class="mode-panel">
+            <div class="mode-kicker"><span>02</span><small>PRINT / JSON</small></div>
+            <div class="mode-preview mode-preview-terminal" aria-label="JSONL 事件流摘录">
+              <div class="mode-preview-bar"><code>ONE-SHOT</code><span>JSONL EVENTS</span></div>
+              <pre><code><span class="terminal-prompt">$</span> xoder -p "Summarize this repo" -o json
+<span class="json-key">{"type":"agent_start"}</span>
+<span class="json-key">{"type":"message_update",</span>
+  <span class="json-nested">"assistantMessageEvent":{"type":"text_delta", …}}</span>
+<span class="json-key">{"type":"agent_end","messages":[…]}</span></code></pre>
+            </div>
             <h3>Print / JSON</h3>
-            <p>
-              使用 <code>xoder -p "query"</code> 直接执行脚本、自动化流程和一次性任务；
-              使用 <code>-o json</code> 输出结构化事件流，方便交给其他程序继续处理。
-            </p>
-          </div>
-          <div class="mode-row">
+            <p>直接运行一次性任务，并用 JSONL 事件流交给其他程序继续处理。</p>
+          </article>
+
+          <article class="mode-panel">
+            <div class="mode-kicker"><span>03</span><small>PYTHON SDK</small></div>
+            <div class="mode-preview mode-preview-sdk">
+              <div class="mode-preview-bar"><code>PYTHON</code><span>xoder_agent</span></div>
+              <pre><code><span class="code-keyword">from</span> xoder_agent <span class="code-keyword">import</span> (
+    AgentHarness,
+    AgentHarnessConfig,
+)</code></pre>
+            </div>
             <h3>SDK</h3>
-            <p>
-              安装 <code>xoder-ai</code> 后，从 <code>xoder_agent</code> 导入
-              <code>AgentHarness</code> 与 <code>AgentHarnessConfig</code>，组合自己的 Provider、
-              模型、工具和事件监听器，把可复用的 Xoder agent loop 嵌入 Python 应用。
-            </p>
-          </div>
+            <p>把同一套 Agent Harness、工具和事件契约嵌入自己的 Python 应用。</p>
+          </article>
         </div>
       </section>
 
